@@ -1,0 +1,161 @@
+{
+  "name": "agenthalo",
+  "version": "1.0.3",
+  "description": "A quiet desktop companion for your AI tasks. Mac App Store edition.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node launch.js",
+    "build": "electron-builder --mac mas",
+    "build:mac": "electron-builder --mac mas",
+    "verify:electron": "node scripts/verify-electron-install.js",
+    "postinstall": "node scripts/verify-electron-install.js --context postinstall",
+    "test": "node test/run-tests.js",
+    "audit:assets": "node scripts/audit-repository-assets.js",
+    "audit:native-package": "node scripts/audit-packaged-native.js",
+    "verify:updater-metadata": "node scripts/verify-updater-metadata.js",
+    "verify:winget-arch": "node scripts/verify-winget-arch-contract.js",
+    "verify:release": "node scripts/verify-release-version.js && node scripts/verify-release-contributors.js",
+    "create-theme": "node scripts/create-theme.js",
+    "export-agent-icons": "node scripts/export-agent-icons.js",
+    "install:claude-hooks": "node hooks/install.js",
+    "uninstall:claude-hooks": "node hooks/uninstall.js",
+    "install:gemini-hooks": "node hooks/gemini-install.js",
+    "install:antigravity-hooks": "node hooks/antigravity-install.js",
+    "install:cursor-hooks": "node hooks/cursor-install.js",
+    "install:kiro-hooks": "node hooks/kiro-install.js",
+    "install:kimi-hooks": "node hooks/kimi-install.js",
+    "install:qwen-hooks": "node hooks/qwen-code-install.js",
+    "install:zcode-hooks": "node hooks/zcode-install.js",
+    "uninstall:zcode-hooks": "node hooks/zcode-install.js --uninstall",
+    "install:codewhale-hooks": "node hooks/codewhale-install.js",
+    "uninstall:codewhale-hooks": "node hooks/codewhale-install.js --uninstall",
+    "install:pi-extension": "node hooks/pi-install.js",
+    "uninstall:pi-extension": "node hooks/pi-install.js --uninstall",
+    "install:openclaw-plugin": "node hooks/openclaw-install.js",
+    "uninstall:openclaw-plugin": "node hooks/openclaw-install.js --uninstall",
+    "install:mimocode-plugin": "node hooks/mimocode-install.js",
+    "uninstall:mimocode-plugin": "node hooks/mimocode-install.js --uninstall",
+    "install:codex-hooks": "node hooks/codex-install.js",
+    "uninstall:codex-hooks": "node hooks/codex-install.js --uninstall",
+    "install:codex-debug-hooks": "node hooks/codex-debug-install.js",
+    "uninstall:codex-debug-hooks": "node hooks/codex-debug-install.js --uninstall",
+    "install:hermes-plugin": "node hooks/hermes-install.js",
+    "uninstall:hermes-plugin": "node hooks/hermes-install.js --uninstall",
+    "install:qoder-hooks": "node hooks/qoder-install.js",
+    "uninstall:qoder-hooks": "node hooks/qoder-install.js --uninstall",
+    "install:reasonix-hooks": "node hooks/reasonix-install.js",
+    "uninstall:reasonix-hooks": "node hooks/reasonix-install.js --uninstall",
+    "install:qoderwork-hooks": "node hooks/qoderwork-install.js",
+    "uninstall:qoderwork-hooks": "node hooks/qoderwork-install.js --uninstall",
+    "install:qwenwork-hooks": "node hooks/qwenwork-install.js",
+    "uninstall:qwenwork-hooks": "node hooks/qwenwork-install.js --uninstall",
+    "install:traecode-hooks": "node hooks/traecode-install.js",
+    "uninstall:traecode-hooks": "node hooks/traecode-install.js --uninstall",
+    "install:workbuddy-hooks": "node hooks/workbuddy-install.js",
+    "uninstall:workbuddy-hooks": "node hooks/workbuddy-install.js --uninstall",
+    "install:dsh": "node hooks/dsh-install.js",
+    "uninstall:dsh": "node hooks/dsh-install.js --uninstall",
+    "cleanup:integrations": "node hooks/cleanup-integrations.js --apply",
+    "register-protocol:dev": "node launch.js --register-protocol",
+    "build:mas": "electron-builder --mac mas"
+  },
+  "keywords": [
+    "agenthalo",
+    "desktop-pet",
+    "electron",
+    "claude-code"
+  ],
+  "author": "Addsum",
+  "license": "AGPL-3.0-only",
+  "type": "commonjs",
+  "build": {
+    "appId": "com.addsum.agenthalo",
+    "productName": "AgentHalo",
+    "copyright": "© 2026 Addsum. Upstream: © 2026 Ruller_Lulu and contributors.",
+    "protocols": [
+      {
+        "name": "AgentHalo Import Protocol",
+        "schemes": [
+          "agenthalo",
+          "clawd"
+        ]
+      }
+    ],
+    "mac": {
+      "icon": "assets/icon.png",
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "artifactName": "AgentHalo-${version}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "mas",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSAppleEventsUsageDescription": "AgentHalo switches to the browser tab or terminal associated with the task you click.",
+        "NSDownloadsFolderUsageDescription": "AgentHalo only writes hooks after you choose a tool config folder."
+      }
+    },
+    "files": [
+      "LICENSE",
+      "NOTICE.md",
+      "src/**/*",
+      "assets/icon.png",
+      "assets/icons/**/*",
+      "assets/icons/agents/**/*",
+      "assets/svg/**/*",
+      "assets/accessories/**/*",
+      "assets/sounds/**/*",
+      "assets/dock-icon.png",
+      "assets/tray-icon*.png",
+      "hooks/**/*",
+      "extensions/**/*",
+      "agents/**/*",
+      "themes/**/*",
+      "pwa/**/*"
+    ],
+    "asarUnpack": [
+      "assets/svg/**/*",
+      "assets/accessories/**/*",
+      "hooks/**/*",
+      "extensions/**/*",
+      "agents/**/*",
+      "themes/**/*",
+      "node_modules/jsonc-parser/**/*"
+    ],
+    "extraResources": [],
+    "publish": [],
+    "afterPack": "scripts/after-pack-koffi.js",
+    "mas": {
+      "type": "distribution",
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "hardenedRuntime": false,
+      "artifactName": "AgentHalo-${version}-mas.${ext}"
+    }
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "@electron/asar": "^3.4.1",
+    "electron": "^41.10.4",
+    "electron-builder": "^26.15.7"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.71.1",
+    "electron-updater": "^6.8.3",
+    "htmlparser2": "^12.0.0",
+    "jsonc-parser": "^3.3.1",
+    "koffi": "2.16.3",
+    "markdown-it": "15.0.0",
+    "ws": "^8.21.0"
+  }
+}

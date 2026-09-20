@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -25 45 45" width="500" height="500" shape-rendering="crispEdges">
+<defs><style>
+#arm-L { transform-origin: 2.25px 9.5px; } #arm-R { transform-origin: 13.75px 9.5px; }
+
+
+.breathe { transform-origin: 7.5px 15px; animation: breathe 3.4s infinite ease-in-out; }
+@keyframes breathe { 0%,100% { transform: scale(1,1); } 50% { transform: scale(1.015,0.985); } }
+.pupils { transform-origin: 7.5px 4.8px; animation: blink 4.6s infinite ease-in-out; }
+@keyframes blink { 0%,8%,100% { transform: scaleY(1); } 4% { transform: scaleY(0.1); } }
+#eyes-js, #body-js, #shadow-js { transition: transform 0.2s ease-out; }
+#shadow-js { transform-origin: 7.5px 15px; }
+
+</style></defs>
+<g id="shadow-js"><rect x="2.5" y="15.3" width="11" height="0.9" fill="#000000" opacity="0.35"/></g>
+<g id="leg-L"><rect x="4" y="13.4" width="3" height="1.4" fill="#294A71"/><rect x="3.6" y="14.6" width="3.6" height="0.8" fill="#111111"/></g><g id="leg-R"><rect x="9" y="13.4" width="3" height="1.4" fill="#294A71"/><rect x="8.8" y="14.6" width="3.6" height="0.8" fill="#111111"/></g>
+<g id="body-js"><g class="breathe">
+<g id="arm-L">
+<rect x="1.5" y="9.3" width="1.5" height="4" fill="#426B98"/>
+<rect x="1.6" y="13.1" width="1.3" height="1.1" fill="#F0CBAB"/>
+</g>
+<g id="arm-R">
+<rect x="13" y="9.3" width="1.5" height="4" fill="#426B98"/>
+<rect x="13.1" y="13.1" width="1.3" height="1.1" fill="#F0CBAB"/>
+</g>
+<rect x="3" y="9" width="10" height="4.6" fill="#426B98"/>
+<polygon points="6,9 10,9 8,11.6" fill="#FFFFFF"/>
+<polygon points="5.2,9 6.2,9 7.6,11.8 7.1,12.6" fill="#18263A"/>
+<polygon points="9.8,9 10.8,9 8.9,12.6 8.4,11.8" fill="#18263A"/>
+<g><rect x="7.55" y="9.3" width="0.9" height="0.7" fill="#D62828"/><polygon points="7.5,10 8.5,10 8.65,14.4 8,15.1 7.35,14.4" fill="#D62828"/></g>
+
+<g id="head"><path d="M2.5 -.6 L5 -2.7 L11 -2.7 L13.5 -.4 L14.6 2.6 L14.8 5.2 L13.6 7.3 L11.2 8.9 L5 8.9 L2.7 7.4 L1.2 5.1 L1.4 2 Z" fill="#EBC9B0"/><ellipse cx="1.5" cy="3.8" rx="0.8" ry="1.6" fill="#EBC9B0"/><ellipse cx="14.0" cy="3.8" rx="0.8" ry="1.6" fill="#EBC9B0"/><path d="M1.3 3 L1.6 4.4 M14.1 3 L13.9 4.4" fill="none" stroke="#CEA98F" stroke-width="0.25" stroke-linecap="round" stroke-linejoin="round"/><path d="M1.4 3 L.8 .3 L1.3 -2 L3.5 -3.6 L6 -4 L8.2 -3.7 L10.3 -4 L13 -2.8 L14.3 -1 L15.1 1 L14.5 4 L13.5 3 L13 -.1 L11 -1.4 L8.2 -1.8 L5 -1.1 L3.1 .2 L2.6 3.9 Z" fill="#D6DBD6"/><path d="M1.8 -.5 L2.8 -2.3 L5 -3.4 L7.7 -3.1 L10.5 -3.5 L12.5 -2.5 L13.6 -.5 L12 -.8 L10 -1.6 L7.7 -1.4 L5 -1.2 L3.1 .1 Z" fill="#F4F2E6"/><path d="M3.9 2.1 L6.4 1.9 M9.4 1.9 L12.1 2.2" fill="none" stroke="#B5AA91" stroke-width="0.37" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="8" cy="5.8" rx="1.2" ry="0.65" fill="#CEA98F"/><path d="M3.6 5.5 L4.8 6.2 L5.1 7.5 M12.5 5.5 L11.3 6.2 L11 7.5" fill="none" stroke="#CEA98F" stroke-width="0.26" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="5.4" cy="3.9" rx="1.05" ry="0.84" fill="#F9EDDE"/><path d="M4.300000000000001 3.85 Q5.4 2.84 6.5 3.8" fill="none" stroke="#846A57" stroke-width="0.28" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="10.7" cy="3.9" rx="1.05" ry="0.84" fill="#F9EDDE"/><path d="M9.6 3.85 Q10.7 2.84 11.799999999999999 3.8" fill="none" stroke="#846A57" stroke-width="0.28" stroke-linecap="round" stroke-linejoin="round"/><g id="eyes-js"><g class="pupils"><ellipse cx="5.4" cy="3.9" rx="0.38" ry="0.52" fill="#4F5047"/><ellipse cx="5.4" cy="3.9" rx="0.18" ry="0.36" fill="#272E30"/><ellipse cx="10.7" cy="3.9" rx="0.38" ry="0.52" fill="#4F5047"/><ellipse cx="10.7" cy="3.9" rx="0.18" ry="0.36" fill="#272E30"/></g></g><ellipse cx="5.4" cy="4.15" rx="2.2" ry="1.5" fill="none" stroke="#84847A" stroke-width="0.22"/><ellipse cx="10.7" cy="4.15" rx="2.2" ry="1.5" fill="none" stroke="#84847A" stroke-width="0.22"/><path d="M7.6000000000000005 3.85 L8.5 3.85 M3.2 3.9 L1.7 3.5 M12.899999999999999 3.9 L13.9 3.5" fill="none" stroke="#84847A" stroke-width="0.22" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 6.95 Q8 7.8 10.8 6.95 L10 8 Q8 8.7 6.3 8 Z" fill="#A47D66"/><path d="M5.9 7.17 Q8 7.7 10.4 7.17 L10 7.8 L6.4 7.8 Z" fill="#FFF3DF"/></g>
+
+</g></g>
+
+</svg>
