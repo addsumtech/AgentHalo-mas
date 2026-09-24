@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -25 45 45">
+  <style>
+    @keyframes hop { 0%,100%{transform:translateY(0)} 40%{transform:translateY(-1.5px)} }
+    #body-js { animation: hop 1.1s ease-in-out infinite; }
+
+  </style>
+  <g id="shadow-js" style="transform-origin: 7.5px 15px">
+    <ellipse cx="7.5" cy="17.0" rx="6.4" ry="1.35" fill="rgba(47,32,18,0.15)"/>
+  </g>
+  <g id="body-js">
+    <path d="M7.5 1.6 L-1.4 9.2 L7.5 6.8 L16.4 9.2 Z" fill="#f7f3ea" stroke="#cfc6b6" stroke-width="0.35" stroke-linejoin="round"/><path d="M7.5 1.6 L3.0 -5.4 L7.5 -1.8 Z" fill="#d9c8a8" stroke="#cfc6b6" stroke-width="0.3" stroke-linejoin="round"/><path d="M7.5 1.6 L12.0 -5.4 L7.5 -1.8 Z" fill="#f7f3ea" stroke="#cfc6b6" stroke-width="0.3" stroke-linejoin="round"/><path d="M7.5 6.8 L5.4 15.4 L7.5 12.6 L9.6 15.4 Z" fill="#d9c8a8" stroke="#cfc6b6" stroke-width="0.3" stroke-linejoin="round"/><path d="M3.0 -5.2 L-0.4 -8.0 L3.8 -6.0 Z" fill="#e0b13a"/><rect x="4.6" y="14.8" width="1.8" height="1.6" rx="0.80" fill="#e4dccb"/><rect x="8.6" y="14.8" width="1.8" height="1.6" rx="0.80" fill="#e4dccb"/><path d="M6.5 4.6 q1.1 1.15 2.1 0" fill="none" stroke="#cfc6b6" stroke-width="0.45" stroke-linecap="round"/>
+    
+  </g>
+  <g id="eyes-js">
+    <path d="M4.8 2.6 q1.05 1.1 2.1 0" fill="none" stroke="#3b3428" stroke-width="0.7" stroke-linecap="round"/><path d="M8.1 2.6 q1.05 1.1 2.1 0" fill="none" stroke="#3b3428" stroke-width="0.7" stroke-linecap="round"/>
+  </g>
+</svg>

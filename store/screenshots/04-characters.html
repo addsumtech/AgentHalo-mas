@@ -1,0 +1,148 @@
+<!DOCTYPE html><html lang="zh-Hans"><head><meta charset="utf-8">
+<meta name="color-scheme" content="light">
+<link rel="stylesheet" href="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/src/settings.css">
+<style>
+
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1440px; height: 900px; overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
+  color: #18181b; -webkit-font-smoothing: antialiased; }
+.desktop {
+  width: 1440px; height: 900px; position: relative;
+  background:
+    radial-gradient(900px 520px at 18% 110%, rgba(255,255,255,.55), transparent 60%),
+    radial-gradient(700px 480px at 88% 8%, rgba(255,244,214,.7), transparent 55%),
+    linear-gradient(165deg, #e7f0ea 0%, #d5e4dc 42%, #c9ddd4 100%);
+}
+.menubar {
+  height: 28px; display: flex; align-items: center; gap: 18px;
+  padding: 0 14px; font-size: 13px; font-weight: 500;
+  background: rgba(255,255,255,.55); color: #1c1c1e;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+.menubar .apple { font-size: 15px; margin-right: 2px; }
+.menubar .sp { flex: 1; }
+.menubar .right { display: flex; gap: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.window {
+  position: absolute; left: 70px; top: 58px; width: 1180px; height: 790px;
+  background: #fff; border-radius: 12px; overflow: hidden;
+  box-shadow: 0 24px 60px rgba(24,40,32,.18), 0 0 0 1px rgba(0,0,0,.08);
+  display: flex; flex-direction: column;
+}
+.titlebar {
+  height: 38px; display: flex; align-items: center; gap: 8px;
+  padding: 0 14px; background: #f6f5f1; border-bottom: 1px solid rgba(0,0,0,.06);
+  font-size: 13px; color: #3f3f46;
+}
+.lights { display: flex; gap: 7px; margin-right: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.lights .r { background: #ff5f57; } .lights .y { background: #febc2e; } .lights .g { background: #28c840; }
+.titlebar b { flex: 1; text-align: center; font-weight: 500; margin-right: 64px; }
+.hud {
+  position: absolute; left: 86px; top: 250px; width: 360px;
+  background: rgba(255,255,255,.92); border: 1px solid rgba(0,0,0,.1);
+  border-radius: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.12);
+  overflow: hidden;
+}
+.hud-head { height: 30px; display: flex; align-items: center; padding: 0 12px;
+  font-size: 11px; color: #6b6b70; border-bottom: 1px solid rgba(0,0,0,.06); }
+.task { height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; }
+.task img { width: 16px; height: 16px; }
+.task .name { font-weight: 600; font-size: 13px; flex: 1; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; }
+.chip { font-size: 11px; font-weight: 500; padding: 2px 6px; border-radius: 5px; }
+.work { background: rgba(22,163,74,.13); color: #16a34a; }
+.think { background: rgba(99,102,241,.13); color: #6366f1; }
+.done { background: rgba(107,114,128,.13); color: #52525b; }
+.pet { position: absolute; right: 150px; bottom: 70px; width: 280px; height: 280px;
+  filter: drop-shadow(0 18px 16px rgba(40,60,50,.18)); }
+.pet img { width: 100%; height: 100%; object-fit: contain; }
+
+
+.window { left: 28px !important; top: 36px !important; width: 1384px !important; height: 848px !important; }
+.content { padding: 14px 18px 8px !important; }
+.content h1 { font-size: 20px !important; margin-bottom: 2px !important; }
+.content .subtitle { margin: 0 0 8px !important; }
+.theme-grid { grid-template-columns: repeat(5, 1fr) !important; gap: 8px !important; }
+.theme-card { padding: 6px !important; gap: 4px !important; }
+.theme-thumb { aspect-ratio: 1.85 / 1 !important; }
+.theme-card-name { font-size: 12px !important; line-height: 1.2; }
+.theme-card, .theme-card:focus, .theme-card:focus-visible { outline: none !important; }
+.theme-card { box-shadow: none !important; }
+.theme-card.active { border-color: var(--accent) !important; box-shadow: 0 0 0 1px var(--accent) !important; }
+.theme-card-name { font-size: 13px; display:flex; align-items:center; justify-content:space-between; gap:6px; }
+
+</style></head><body><div class="desktop"><div class="menubar"><svg class="apple" width="14" height="16" viewBox="0 0 14 17" aria-hidden="true"><path fill="#1c1c1e" d="M11.2 8.9c0-2 1.6-3 1.7-3.1-1-1.4-2.4-1.6-2.9-1.6-1.2-.1-2.4.7-3 .7s-1.6-.7-2.6-.7c-1.4 0-2.6.8-3.3 2-1.4 2.5-.4 6.1 1 8.1.7 1 1.5 2.1 2.5 2 1 0 1.4-.7 2.6-.7s1.6.7 2.6.6c1.1 0 1.8-1 2.4-2 .8-1.1 1.1-2.2 1.1-2.3-.1 0-2.1-.8-2.1-3zM9.5 3.2c.5-.7.9-1.6.8-2.5-.8 0-1.7.5-2.2 1.2-.5.6-.9 1.5-.8 2.4.9.1 1.7-.4 2.2-1.1z"/></svg><span>AgentHalo</span><span>文件</span><span>编辑</span><span>窗口</span><span class="sp"></span><span class="right"><span>周三 9月23日</span><span>9:41</span></span></div><div class="window" style="left:36px;top:46px;width:1368px;height:830px">
+      <div class="titlebar"><span class="lights"><i class="r"></i><i class="y"></i><i class="g"></i></span><b>AgentHalo 设置</b></div>
+      <div class="app" style="min-height:0;flex:1">
+        <nav class="sidebar"><div class="sidebar-brand"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/assets/icon.png" alt=""><span>AgentHalo</span></div><button class="sidebar-item active" type="button"><span class="sidebar-item-label">桌面伙伴</span></button><button class="sidebar-item" type="button"><span class="sidebar-item-label">连接应用</span></button><button class="sidebar-item" type="button"><span class="sidebar-item-label">通用</span></button><button class="sidebar-item" type="button"><span class="sidebar-item-label">关于</span></button></nav>
+        <main class="content" style="overflow:auto">
+<h1>桌面伙伴</h1>
+<p class="subtitle">商店版内置 17 个原创角色，以及乔布斯、芒格、孙悟空。</p>
+<div style="display:flex;gap:8px;margin:-8px 0 16px">
+  <button class="soft-btn" type="button">导入角色包（.zip）</button>
+</div>
+<div class="theme-grid"><div class="theme-card active" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/halo/assets/idle-follow.svg" alt="光环"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">光环</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/sprout/assets/idle-follow.svg" alt="豆芽"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">豆芽</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/persimmon/assets/idle-follow.svg" alt="柿子"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">柿子</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/ink/assets/idle-follow.svg" alt="墨点"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">墨点</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/crescent/assets/idle-follow.svg" alt="月牙"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">月牙</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/teapot/assets/idle-follow.svg" alt="茶盏"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">茶盏</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/crane/assets/idle-follow.svg" alt="纸鹤"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">纸鹤</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/nimbus/assets/idle-follow.svg" alt="雨云"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">雨云</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/lantern/assets/idle-follow.svg" alt="灯笼"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">灯笼</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/cactus/assets/idle-follow.svg" alt="青刺"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">青刺</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/bao/assets/idle-follow.svg" alt="包子"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">包子</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/starfish/assets/idle-follow.svg" alt="海星"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">海星</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/turtle/assets/idle-follow.svg" alt="石龟"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">石龟</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/fox/assets/idle-follow.svg" alt="赤狐"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">赤狐</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/owl/assets/idle-follow.svg" alt="夜鸮"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">夜鸮</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/acorn/assets/idle-follow.svg" alt="橡果"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">橡果</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/snow/assets/idle-follow.svg" alt="雪团"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">雪团</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/jobs/assets/idle-follow.svg" alt="乔布斯"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">乔布斯</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/munger/assets/idle-follow.svg" alt="芒格"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">芒格</span><span class="theme-card-badge">内建</span></div>
+    </div><div class="theme-card" role="img">
+      <div class="theme-thumb"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/themes/sunwukong/assets/idle-follow.svg" alt="孙悟空"></div>
+      <div class="theme-card-name"><span class="theme-card-name-text">孙悟空</span><span class="theme-card-badge">内建</span></div>
+    </div></div>
+</main>
+      </div>
+    </div></div></body></html>

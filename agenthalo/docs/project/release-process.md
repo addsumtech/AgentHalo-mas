@@ -21,6 +21,16 @@ application directory and does not run as a repository-root GitHub workflow.
 7. Publish the matching npm installer only after the Release downloads work.
    Verify both the public registry version and an installation from the public ZIP.
 
+### v1.0.4 Draft Smoke Checklist
+
+- Confirm the packaged app shows `1.0.4` metadata on both architectures.
+- Settings -> About shows `v1.0.4`, sourced from `app.getVersion()`.
+- Opening empty Cursor chats does not add folder-named waiting tasks.
+- A prompt or tool event after an empty start shows the normal task, including
+  while another conversation has a subagent running.
+- Delayed session starts do not reset an active task; actual subagents stay hidden.
+- Verify the published short command upgrades the previous application.
+
 ### v1.0.3 Draft Smoke Checklist
 
 - Confirm the packaged app shows `1.0.3` metadata on both architectures.

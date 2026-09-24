@@ -7,7 +7,7 @@
   },
   "author": "Addsum",
   "version": "1.0.0",
-  "description": "A cream cube companion with a coral scarf and a small gold ring.",
+  "description": "A round cream spirit with a gold ring and a coral scarf.",
   "customization": {
     "petTint": false
   },
@@ -31,7 +31,9 @@
   },
   "eyeTracking": {
     "enabled": true,
-    "states": ["idle"],
+    "states": [
+      "idle"
+    ],
     "eyeRatioX": 0.5,
     "eyeRatioY": 0.5,
     "maxOffset": 0.8,
@@ -46,17 +48,39 @@
     "shadowOrigin": "7.5px 15px"
   },
   "states": {
-    "idle": ["idle-follow.svg"],
-    "thinking": ["thinking.svg"],
-    "working": ["working.svg"],
-    "juggling": ["working.svg"],
-    "error": { "fallbackTo": "attention" },
-    "attention": ["attention.svg"],
-    "notification": { "fallbackTo": "attention" },
-    "sweeping": { "fallbackTo": "attention" },
-    "carrying": { "fallbackTo": "attention" },
-    "sleeping": ["sleeping.svg"],
-    "waking": ["idle-follow.svg"]
+    "idle": [
+      "idle-follow.svg"
+    ],
+    "thinking": [
+      "thinking.svg"
+    ],
+    "working": [
+      "working.svg"
+    ],
+    "juggling": [
+      "working.svg"
+    ],
+    "error": {
+      "fallbackTo": "attention"
+    },
+    "attention": [
+      "attention.svg"
+    ],
+    "notification": {
+      "fallbackTo": "attention"
+    },
+    "sweeping": {
+      "fallbackTo": "attention"
+    },
+    "carrying": {
+      "fallbackTo": "attention"
+    },
+    "sleeping": [
+      "sleeping.svg"
+    ],
+    "waking": [
+      "idle-follow.svg"
+    ]
   },
   "sleepSequence": {
     "mode": "direct"
@@ -66,10 +90,26 @@
     "mouseSleepTimeout": 60000
   },
   "hitBoxes": {
-    "default": { "x": -3, "y": -6, "w": 22, "h": 22 },
-    "sleeping": { "x": -3, "y": 4, "w": 22, "h": 12 }
+    "default": {
+      "x": -3,
+      "y": -6,
+      "w": 22,
+      "h": 22
+    },
+    "sleeping": {
+      "x": -3,
+      "y": 4,
+      "w": 22,
+      "h": 12
+    }
   },
-  "sleepingHitboxFiles": ["sleeping.svg"],
+  "sleepingHitboxFiles": [
+    "sleeping.svg"
+  ],
+  "sounds": {
+    "complete": "complete.mp3",
+    "confirm": "confirm.mp3"
+  },
   "miniMode": {
     "supported": false
   },

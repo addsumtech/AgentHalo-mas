@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "name": {
+    "zh": "夜鸮",
+    "zh-TW": "夜鴞",
+    "en": "Owl"
+  },
+  "author": "Addsum",
+  "version": "1.0.0",
+  "description": "A stout owl with ear tufts.",
+  "customization": {
+    "petTint": false
+  },
+  "viewBox": {
+    "x": -15,
+    "y": -25,
+    "width": 45,
+    "height": 45
+  },
+  "layout": {
+    "contentBox": {
+      "x": -4,
+      "y": -6,
+      "width": 23,
+      "height": 24
+    },
+    "centerX": 7.5,
+    "baselineY": 17,
+    "visibleHeightRatio": 0.58,
+    "baselineBottomRatio": 0.05
+  },
+  "eyeTracking": {
+    "enabled": true,
+    "states": [
+      "idle"
+    ],
+    "eyeRatioX": 0.5,
+    "eyeRatioY": 0.5,
+    "maxOffset": 0.8,
+    "bodyScale": 0.25,
+    "shadowStretch": 0.15,
+    "shadowShift": 0.3,
+    "ids": {
+      "eyes": "eyes-js",
+      "body": "body-js",
+      "shadow": "shadow-js"
+    },
+    "shadowOrigin": "7.5px 15px"
+  },
+  "states": {
+    "idle": [
+      "idle-follow.svg"
+    ],
+    "thinking": [
+      "thinking.svg"
+    ],
+    "working": [
+      "working.svg"
+    ],
+    "juggling": [
+      "working.svg"
+    ],
+    "error": {
+      "fallbackTo": "attention"
+    },
+    "attention": [
+      "attention.svg"
+    ],
+    "notification": {
+      "fallbackTo": "attention"
+    },
+    "sweeping": {
+      "fallbackTo": "attention"
+    },
+    "carrying": {
+      "fallbackTo": "attention"
+    },
+    "sleeping": [
+      "sleeping.svg"
+    ],
+    "waking": [
+      "idle-follow.svg"
+    ]
+  },
+  "sleepSequence": {
+    "mode": "direct"
+  },
+  "timings": {
+    "mouseIdleTimeout": 20000,
+    "mouseSleepTimeout": 60000
+  },
+  "hitBoxes": {
+    "default": {
+      "x": -3,
+      "y": -6,
+      "w": 22,
+      "h": 22
+    },
+    "sleeping": {
+      "x": -3,
+      "y": 4,
+      "w": 22,
+      "h": 12
+    }
+  },
+  "sleepingHitboxFiles": [
+    "sleeping.svg"
+  ],
+  "sounds": {
+    "complete": "complete.mp3",
+    "confirm": "confirm.mp3"
+  },
+  "miniMode": {
+    "supported": false
+  },
+  "objectScale": {
+    "widthRatio": 1.9,
+    "heightRatio": 1.3,
+    "offsetX": -0.45,
+    "offsetY": -0.25
+  }
+}

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -25 45 45">
+  <style>
+    @keyframes breathe { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-0.35px)} }
+    @keyframes blink { 0%,92%,100%{transform:scaleY(1)} 95%{transform:scaleY(0.12)} }
+    #body-js { animation: breathe 3.2s ease-in-out infinite; }
+    #eyes-js { transform-origin: 7.5px 4px; animation: blink 4.4s ease-in-out infinite; }
+
+  </style>
+  <g id="shadow-js" style="transform-origin: 7.5px 15px">
+    <ellipse cx="7.5" cy="17.0" rx="6.4" ry="1.35" fill="rgba(47,32,18,0.15)"/>
+  </g>
+  <g id="body-js">
+    <rect x="-1.6" y="3.6" width="5.4" height="3.0" rx="1.50" fill="#5f8f5c"/><rect x="11.2" y="1.6" width="5.2" height="2.8" rx="1.40" fill="#5f8f5c"/><rect x="3.6" y="14.6" width="2.2" height="1.7" rx="0.85" fill="#4d774b"/><rect x="9.2" y="14.6" width="2.2" height="1.7" rx="0.85" fill="#4d774b"/><rect x="4.6" y="-3.4" width="5.8" height="18.2" rx="2.9" fill="#5f8f5c"/><circle cx="7.5" cy="-4.6" r="1.15" fill="#e07a9a"/><ellipse cx="7.5" cy="10.8" rx="2.2" ry="3.4" fill="#3d633b" opacity="0.18"/><ellipse cx="5.8" cy="6.2" rx="0.85" ry="0.45" fill="#d7e8a8" opacity="0.55"/><ellipse cx="9.2" cy="6.2" rx="0.85" ry="0.45" fill="#d7e8a8" opacity="0.55"/><path d="M6.5 6.6 q1.1 1.15 2.1 0" fill="none" stroke="#3d633b" stroke-width="0.45" stroke-linecap="round"/>
+    
+  </g>
+  <g id="eyes-js">
+    <circle cx="6.1" cy="3.2" r="0.78" fill="#1f301e"/><circle cx="8.9" cy="3.2" r="0.78" fill="#1f301e"/><circle cx="6.3999999999999995" cy="2.92" r="0.2028" fill="#fff8ee"/><circle cx="9.200000000000001" cy="2.92" r="0.2028" fill="#fff8ee"/>
+  </g>
+</svg>

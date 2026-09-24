@@ -1,6 +1,6 @@
 {
   "name": "agenthalo",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A quiet desktop companion for your AI tasks. Mac App Store edition.",
   "main": "src/main.js",
   "scripts": {
@@ -135,6 +135,8 @@
     "afterPack": "scripts/after-pack-koffi.js",
     "mas": {
       "type": "distribution",
+      "identity": "LI JIE (85BZU2K38Z)",
+      "provisioningProfile": "build/embedded.provisionprofile",
       "entitlements": "build/entitlements.mas.plist",
       "entitlementsInherit": "build/entitlements.mas.inherit.plist",
       "hardenedRuntime": false,

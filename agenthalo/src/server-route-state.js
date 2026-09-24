@@ -610,6 +610,19 @@ function handleStatePost(req, res, options) {
         const existingSession = ctx.sessions && typeof ctx.sessions.get === "function"
           ? ctx.sessions.get(sid)
           : null;
+        if (agentId === "cursor-agent") {
+          if (cursorSubagentWindows) cursorSubagentWindows.observe(sid, event);
+          // Cursor announces empty chats when a workspace opens. Wait for a
+          // prompt/thought/tool event before creating a card, and do not let a
+          // delayed start reset a running task. Keep the announcement above so
+          // the first real event is not mistaken for another chat's subagent.
+          if (event === "SessionStart") {
+            recordRequestHookEvent.droppedUnsupported();
+            res.writeHead(204, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
+            res.end();
+            return;
+          }
+        }
         // Dropping here (rather than after updateSession) also leaves the
         // official-activity mark unset, so the rollout-file monitor stays
         // unsuppressed and gets to open the card with a cwd and a thread name.
@@ -666,7 +679,6 @@ function handleStatePost(req, res, options) {
         // sit in the task list beside the chat that spawned it.
         let cursorSubagent = false;
         if (agentId === "cursor-agent" && cursorSubagentWindows) {
-          cursorSubagentWindows.observe(sid, event);
           cursorSubagent = cursorSubagentWindows.isSubagentSession(sid, event, !!existingSession);
         }
         if (state.startsWith("mini-") && !svg) {

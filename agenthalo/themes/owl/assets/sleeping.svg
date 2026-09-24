@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -25 45 45">
+  <style>
+  </style>
+  <g id="shadow-js" style="transform-origin: 7.5px 15px">
+    <ellipse cx="7.5" cy="17.0" rx="6.4" ry="1.35" fill="rgba(47,32,18,0.15)"/>
+  </g>
+  <g id="body-js">
+    <path d="M2.4 -3.2 L4.8 -8.0 L6.6 -2.4 Z" fill="#5e4c38"/><path d="M12.6 -3.2 L10.2 -8.0 L8.4 -2.4 Z" fill="#5e4c38"/><rect x="3.2" y="14.4" width="2.4" height="1.7" rx="0.85" fill="#735f46"/><rect x="9.4" y="14.4" width="2.4" height="1.7" rx="0.85" fill="#735f46"/><ellipse cx="7.5" cy="6.4" rx="7.2" ry="8.2" fill="#8b7355"/><ellipse cx="7.5" cy="11.4" rx="5.2" ry="2.4" fill="#5e4c38" opacity="0.16"/>
+    
+  </g>
+  <g id="eyes-js">
+    <path d="M3.9 3.6 q1.2 0.7 2.3 0" fill="none" stroke="#1c1610" stroke-width="0.6" stroke-linecap="round"/><path d="M8.9 3.6 q1.2 0.7 2.3 0" fill="none" stroke="#1c1610" stroke-width="0.6" stroke-linecap="round"/>
+  </g>
+</svg>

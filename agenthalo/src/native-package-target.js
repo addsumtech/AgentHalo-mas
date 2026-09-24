@@ -61,7 +61,7 @@ const BUILDER_ARCH_BY_NUMBER = Object.freeze({
 function normalizePlatform(value) {
   const platform = String(value == null ? "" : value).trim().toLowerCase();
   if (platform === "windows" || platform === "win") return "win32";
-  if (platform === "mac" || platform === "macos" || platform === "osx") return "darwin";
+  if (platform === "mac" || platform === "macos" || platform === "osx" || platform === "mas") return "darwin";
   return platform;
 }
 

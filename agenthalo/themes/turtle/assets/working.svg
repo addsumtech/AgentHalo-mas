@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -25 45 45">
+  <style>
+    @keyframes tap { 0%,100%{transform:translateY(0)} 50%{transform:translateY(0.35px)} }
+    @keyframes dots { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+    #body-js { animation: tap 0.7s ease-in-out infinite; }
+    .d1 { animation: dots 1.2s ease-in-out infinite; }
+    .d2 { animation: dots 1.2s ease-in-out .2s infinite; }
+    .d3 { animation: dots 1.2s ease-in-out .4s infinite; }
+
+  </style>
+  <g id="shadow-js" style="transform-origin: 7.5px 15px">
+    <ellipse cx="7.5" cy="17.0" rx="6.4" ry="1.35" fill="rgba(47,32,18,0.15)"/>
+  </g>
+  <g id="body-js">
+    <ellipse cx="1.2" cy="11.8" rx="2.0" ry="1.25" fill="#66735d"/><ellipse cx="13.8" cy="11.8" rx="2.0" ry="1.25" fill="#66735d"/><ellipse cx="1.8" cy="5.0" rx="1.8" ry="1.2" fill="#66735d"/><ellipse cx="13.2" cy="5.0" rx="1.8" ry="1.2" fill="#66735d"/><ellipse cx="7.5" cy="7.6" rx="8.2" ry="6.2" fill="#9aa68d"/><path d="M3.8 5.0 L7.5 3.2 L11.2 5.0 L11.2 9.6 L7.5 11.4 L3.8 9.6 Z" fill="#7d8b73" opacity="0.7"/><circle cx="7.5" cy="-0.4" r="3.15" fill="#7d8b73"/><ellipse cx="7.5" cy="10.8" rx="6.0" ry="2.0" fill="#55614d" opacity="0.16"/><path d="M6.6 0.9 q0.9 1.15 1.8 0" fill="none" stroke="#55614d" stroke-width="0.45" stroke-linecap="round"/>
+    <circle class="d1" cx="17.4" cy="1.2" r="0.5" fill="#24301e"/><circle class="d2" cx="19" cy="1.2" r="0.5" fill="#24301e"/><circle class="d3" cx="20.6" cy="1.2" r="0.5" fill="#24301e"/>
+  </g>
+  <g id="eyes-js">
+    <circle cx="6.3" cy="-1.0" r="0.52" fill="#24301e"/><circle cx="8.7" cy="-1.0" r="0.52" fill="#24301e"/><circle cx="6.6" cy="-1.28" r="0.13520000000000001" fill="#fff8ee"/><circle cx="9.0" cy="-1.28" r="0.13520000000000001" fill="#fff8ee"/>
+  </g>
+</svg>

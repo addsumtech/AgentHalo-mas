@@ -4,7 +4,7 @@ This tree is the **store-only** build. It is not the GitHub / `npx agenthalo` fu
 
 - Bundle id: `com.addsum.agenthalo`
 - Sandbox: users must pick each tool’s config folder before hooks are written
-- Built-in characters: Halo, Jobs, Buffett, Munger, Sun Wukong
+- Built-in characters: 17 original companions plus Jobs, Munger, and Sun Wukong. No living-person likenesses.
 - License: AGPL-3.0-only
 
 The unrestricted desktop build stays in [addsumtech/AgentHalo](https://github.com/addsumtech/AgentHalo). Do not merge store sandbox changes back into that repo.

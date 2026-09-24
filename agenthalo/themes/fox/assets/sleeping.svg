@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -25 45 45">
+  <style>
+  </style>
+  <g id="shadow-js" style="transform-origin: 7.5px 15px">
+    <ellipse cx="7.5" cy="17.0" rx="6.4" ry="1.35" fill="rgba(47,32,18,0.15)"/>
+  </g>
+  <g id="body-js">
+    <path d="M15.8 4.0 C19.6 0.8, 20.6 9.6, 15.0 12.2 C13.4 9.0, 14.2 5.6, 15.8 4.0 Z" fill="#d17a3a"/><ellipse cx="7.4" cy="9.4" rx="5.6" ry="5.2" fill="#d17a3a"/><rect x="3.4" y="14.2" width="2.2" height="1.8" rx="0.90" fill="#b8662c"/><rect x="9.0" y="14.2" width="2.2" height="1.8" rx="0.90" fill="#b8662c"/><circle cx="7.4" cy="3.8" r="5.3" fill="#d17a3a"/><path d="M2.2 -0.6 L3.8 -6.8 L6.4 0.2 Z" fill="#d17a3a"/><path d="M12.6 -0.6 L11.0 -6.8 L8.4 0.2 Z" fill="#d17a3a"/><path d="M3.6 -1.4 L4.2 -4.4 L5.6 0.0 Z" fill="#f4efe6"/><path d="M11.2 -1.4 L10.6 -4.4 L9.2 0.0 Z" fill="#f4efe6"/><ellipse cx="7.4" cy="6.0" rx="2.3" ry="1.6" fill="#f4efe6"/><path d="M7.4 9.6 L4.2 12.8 L10.6 12.8 Z" fill="#f4efe6"/>
+    
+  </g>
+  <g id="eyes-js">
+    <path d="M4.3 3.2 q1.2 0.7 2.3 0" fill="none" stroke="#3d2414" stroke-width="0.6" stroke-linecap="round"/><path d="M8.3 3.2 q1.2 0.7 2.3 0" fill="none" stroke="#3d2414" stroke-width="0.6" stroke-linecap="round"/>
+  </g>
+</svg>

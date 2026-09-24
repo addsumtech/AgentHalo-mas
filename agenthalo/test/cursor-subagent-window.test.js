@@ -70,3 +70,32 @@ test("tracked parents stay bounded", () => {
   for (let i = 0; i < 10; i++) windows.observe(`parent-${i}`, "SubagentStart");
   assert.strictEqual(windows.size, 3);
 });
+
+test("an undisplayed session start still identifies the first real activity as a normal chat", () => {
+  const windows = createCursorSubagentWindows();
+  windows.observe("chat", "SessionStart");
+  windows.observe("parent", "SubagentStart");
+  assert.strictEqual(windows.isSubagentSession("chat", "PreToolUse", false), false);
+  assert.strictEqual(windows.isSubagentSession("child", "PreToolUse", false), true);
+});
+
+test("session end and clear discard pending announcements", () => {
+  const windows = createCursorSubagentWindows();
+  windows.observe("chat", "SessionStart");
+  windows.observe("chat", "SessionEnd");
+  windows.observe("parent", "SubagentStart");
+  assert.strictEqual(windows.isSubagentSession("chat", "PreToolUse", false), true);
+  windows.observe("chat", "SessionStart");
+  windows.clear();
+  windows.observe("parent", "SubagentStart");
+  assert.strictEqual(windows.isSubagentSession("chat", "PreToolUse", false), true);
+});
+
+test("pending announcements stay bounded and are consumed by actual activity", () => {
+  const windows = createCursorSubagentWindows();
+  for (let i = 0; i < 300; i++) windows.observe(`chat-${i}`, "SessionStart");
+  windows.observe("parent", "SubagentStart");
+  assert.strictEqual(windows.isSubagentSession("chat-0", "PreToolUse", false), true);
+  assert.strictEqual(windows.isSubagentSession("chat-299", "PreToolUse", false), false);
+  assert.strictEqual(windows.isSubagentSession("chat-299", "PreToolUse", false), true);
+});

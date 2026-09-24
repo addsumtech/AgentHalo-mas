@@ -27,12 +27,14 @@ test("electron-builder numeric and textual architecture values normalize once", 
   assert.equal(normalizeBuilderArch("aarch64"), "arm64");
   assert.equal(normalizePlatform("windows"), "win32");
   assert.equal(normalizePlatform("mac"), "darwin");
+  assert.equal(normalizePlatform("mas"), "darwin");
 });
 
 test("target resolution rejects unsupported platform and architecture tuples", () => {
   assert.equal(resolveReleaseTarget("win32", 1).id, "windows-x64");
   assert.equal(resolveReleaseTarget("win32", 3).id, "windows-arm64");
   assert.equal(resolveReleaseTarget("darwin", "x64").id, "darwin-x64");
+  assert.equal(resolveReleaseTarget("mas", 3).id, "darwin-arm64");
   assert.equal(resolveReleaseTarget("linux", "amd64").id, "linux-x64");
   assert.throws(() => resolveReleaseTarget("linux", "arm64"), /Unsupported package target/);
   assert.throws(() => resolveReleaseTarget("freebsd", "x64"), /Unsupported package target/);

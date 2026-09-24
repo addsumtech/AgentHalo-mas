@@ -21,7 +21,7 @@ AgentHalo
 
 AgentHalo 是一只安静待在桌面上的小伙伴。当你的本地 AI 编程工具开始干活、想事情、或等你点头时，它会跟着动；事情做完了，它再轻轻喊你一声。
 
-商店版只内置无版权争议的角色：原创「光环」，以及乔布斯、巴菲特、芒格、孙悟空。你也可以自己导入角色包。
+商店版只内置无版权争议的角色：17 个原创桌宠（光环、豆芽、柿子等），以及乔布斯、芒格、孙悟空。不内置在世人物形象。你也可以自己导入角色包。
 
 它不读你的对话，也不把任务内容上传到苹果或我们的服务器。本机状态口只绑在 127.0.0.1。要让某个工具的桌宠动起来，你需要在设置里亲手选出那个工具的配置文件夹（例如 `~/.claude`）。AgentHalo 只会在你授权的目录里写入 hook。
 
@@ -42,7 +42,7 @@ A quiet companion for AI tasks
 
 AgentHalo sits on your Mac desktop and moves with your local AI coding tools. When a task is thinking, working, or waiting for you, the companion shows it. When the work is done, it gives you a small nudge.
 
-The store build ships only license-safe characters: the original Halo companion, plus Jobs, Buffett, Munger, and Sun Wukong. You can import your own character packs.
+The store build ships only license-safe characters: 17 original companions (Halo, Sprout, Persimmon, and others), plus Jobs, Munger, and Sun Wukong. Living-person likenesses are not bundled. You can import your own character packs.
 
 AgentHalo does not read your conversations and does not upload task content to Apple or to us. The local status server binds to 127.0.0.1 only. To connect a tool, you choose that tool’s config folder in Settings (for example `~/.claude`). Hooks are written only in folders you authorize.
 
@@ -61,7 +61,7 @@ Why the folder picker: App Sandbox blocks writes to `~/.claude`, `~/.codex`, and
 
 We do not read conversation text. Hooks report task state (idle / thinking / working / done).
 
-Built-in characters are original or public-figure / folklore depictions. Third-party characters are not bundled. Users may import their own ZIP packs.
+Built-in characters are original companions or public-domain / deceased-figure depictions (Jobs, Munger, Sun Wukong). Living-person likenesses and third-party IP are not bundled. Users may import their own ZIP packs.
 
 SSH tunnels, WSL deploy, and writing Chrome preferences are removed or hidden in this store build.
 

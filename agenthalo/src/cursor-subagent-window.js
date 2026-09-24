@@ -11,6 +11,7 @@ const CURSOR_SUBAGENT_CLOSE_EVENT = "SubagentStop";
 const CURSOR_SELF_ANNOUNCING_EVENTS = new Set(["SessionStart", "UserPromptSubmit"]);
 const DEFAULT_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_MAX_PARENTS = 64;
+const MAX_PENDING_ANNOUNCEMENTS = 256;
 
 function createCursorSubagentWindows(options = {}) {
   const now = typeof options.now === "function" ? options.now : Date.now;
@@ -21,6 +22,9 @@ function createCursorSubagentWindows(options = {}) {
   // parentSessionId -> { depth, updatedAt }. A parent can run several subagents
   // at once, so the span closes only when the last one stops.
   const open = new Map();
+  // SessionStart no longer opens a task card. Retain its provenance until the
+  // first real event; otherwise an ordinary chat could look like a subagent.
+  const announced = new Set();
 
   function prune() {
     const cutoff = now() - ttlMs;
@@ -32,6 +36,15 @@ function createCursorSubagentWindows(options = {}) {
 
   function observe(sessionId, event) {
     if (!sessionId) return;
+    if (event === "SessionStart") {
+      announced.delete(sessionId);
+      announced.add(sessionId);
+      if (announced.size > MAX_PENDING_ANNOUNCEMENTS) {
+        announced.delete(announced.values().next().value);
+      }
+      return;
+    }
+    if (event === "SessionEnd") announced.delete(sessionId);
     if (event === CURSOR_SUBAGENT_OPEN_EVENT) {
       const entry = open.get(sessionId) || { depth: 0, updatedAt: now() };
       entry.depth += 1;
@@ -50,6 +63,8 @@ function createCursorSubagentWindows(options = {}) {
   }
 
   function isSubagentSession(sessionId, event, sessionExists) {
+    const selfAnnounced = announced.delete(sessionId);
+    if (selfAnnounced) return false;
     if (sessionExists || !sessionId) return false;
     if (CURSOR_SELF_ANNOUNCING_EVENTS.has(event)) return false;
     prune();
@@ -61,7 +76,7 @@ function createCursorSubagentWindows(options = {}) {
   return {
     observe,
     isSubagentSession,
-    clear() { open.clear(); },
+    clear() { open.clear(); announced.clear(); },
     get size() { return open.size; },
   };
 }

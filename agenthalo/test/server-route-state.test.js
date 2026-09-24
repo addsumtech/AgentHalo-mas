@@ -23,6 +23,7 @@ const { buildStateBody } = require("../hooks/clawd-hook");
 const { makeSessionKey } = require("../src/session-key");
 const createAgentRuntimeMain = require("../src/agent-runtime-main");
 const { createDshStateSequenceFence } = require("../src/dsh-state-sequence");
+const { createCursorSubagentWindows } = require("../src/cursor-subagent-window");
 const initState = require("../src/state");
 const themeLoader = require("../src/theme-loader");
 themeLoader.init(path.join(__dirname, "fixtures", "legacy-app", "src"));
@@ -191,6 +192,62 @@ describe("server-route-state health", () => {
 });
 
 describe("server-route-state POST", () => {
+  describe("Cursor empty sessions", () => {
+    const body = (fields = {}) => JSON.stringify({
+      agent_id: "cursor-agent", session_id: "cursor-empty", cwd: "/tmp/AgentHalo-MAS",
+      state: "idle", event: "SessionStart", ...fields,
+    });
+
+    it("does not create a task or drive the pet for repeated empty session starts", async () => {
+      const windows = createCursorSubagentWindows();
+      for (let i = 0; i < 3; i++) {
+        const res = await callStatePost(body(), { options: { cursorSubagentWindows: windows } });
+        assert.strictEqual(res.statusCode, 204);
+        assert.deepStrictEqual(res.calls.updateSession, []);
+        assert.deepStrictEqual(res.calls.setState, []);
+      }
+    });
+
+    it("does not reset an active task when a delayed session start arrives", async () => {
+      const res = await callStatePost(body(), {
+        ctx: { sessions: new Map([[localSessionKey("cursor-empty"), {
+          agentId: "cursor-agent", state: "working", lastEvent: "PreToolUse",
+        }]]) },
+      });
+      assert.strictEqual(res.statusCode, 204);
+      assert.deepStrictEqual(res.calls.updateSession, []);
+    });
+
+    it("shows actual activity after an empty start, including during another parent's subagent span", async () => {
+      for (const [event, state] of [["UserPromptSubmit", "thinking"], ["PreToolUse", "working"], ["AfterAgentThought", "working"]]) {
+        const windows = createCursorSubagentWindows();
+        const options = { cursorSubagentWindows: windows };
+        windows.observe(localSessionKey("other-parent"), "SubagentStart");
+        await callStatePost(body(), { options });
+        const res = await callStatePost(body({ event, state }), { options });
+        assert.strictEqual(res.statusCode, 200, event);
+        assert.strictEqual(res.calls.updateSession.length, 1, event);
+        assert.strictEqual(res.calls.updateSession[0][1], state, event);
+        assert.strictEqual(res.calls.updateSession[0][3].headless, false, event);
+      }
+    });
+
+    it("continues hiding unannounced subagent tool events", async () => {
+      const windows = createCursorSubagentWindows();
+      windows.observe(localSessionKey("parent"), "SubagentStart");
+      const res = await callStatePost(body({ event: "PreToolUse", state: "working" }), {
+        options: { cursorSubagentWindows: windows },
+      });
+      assert.strictEqual(res.calls.updateSession[0][3].headless, true);
+    });
+
+    it("leaves session starts from other agents unchanged", async () => {
+      const res = await callStatePost(body({ agent_id: "claude-code" }));
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.calls.updateSession.length, 1);
+    });
+  });
+
   describe("Codex memory maintenance", () => {
     const memoryDir = path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "memories");
     const absent = { available: true, found: false };

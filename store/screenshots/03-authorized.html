@@ -1,0 +1,129 @@
+<!DOCTYPE html><html lang="zh-Hans"><head><meta charset="utf-8">
+<meta name="color-scheme" content="light">
+<link rel="stylesheet" href="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/src/settings.css">
+<style>
+
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1440px; height: 900px; overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
+  color: #18181b; -webkit-font-smoothing: antialiased; }
+.desktop {
+  width: 1440px; height: 900px; position: relative;
+  background:
+    radial-gradient(900px 520px at 18% 110%, rgba(255,255,255,.55), transparent 60%),
+    radial-gradient(700px 480px at 88% 8%, rgba(255,244,214,.7), transparent 55%),
+    linear-gradient(165deg, #e7f0ea 0%, #d5e4dc 42%, #c9ddd4 100%);
+}
+.menubar {
+  height: 28px; display: flex; align-items: center; gap: 18px;
+  padding: 0 14px; font-size: 13px; font-weight: 500;
+  background: rgba(255,255,255,.55); color: #1c1c1e;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+.menubar .apple { font-size: 15px; margin-right: 2px; }
+.menubar .sp { flex: 1; }
+.menubar .right { display: flex; gap: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.window {
+  position: absolute; left: 70px; top: 58px; width: 1180px; height: 790px;
+  background: #fff; border-radius: 12px; overflow: hidden;
+  box-shadow: 0 24px 60px rgba(24,40,32,.18), 0 0 0 1px rgba(0,0,0,.08);
+  display: flex; flex-direction: column;
+}
+.titlebar {
+  height: 38px; display: flex; align-items: center; gap: 8px;
+  padding: 0 14px; background: #f6f5f1; border-bottom: 1px solid rgba(0,0,0,.06);
+  font-size: 13px; color: #3f3f46;
+}
+.lights { display: flex; gap: 7px; margin-right: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.lights .r { background: #ff5f57; } .lights .y { background: #febc2e; } .lights .g { background: #28c840; }
+.titlebar b { flex: 1; text-align: center; font-weight: 500; margin-right: 64px; }
+.hud {
+  position: absolute; left: 86px; top: 250px; width: 360px;
+  background: rgba(255,255,255,.92); border: 1px solid rgba(0,0,0,.1);
+  border-radius: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.12);
+  overflow: hidden;
+}
+.hud-head { height: 30px; display: flex; align-items: center; padding: 0 12px;
+  font-size: 11px; color: #6b6b70; border-bottom: 1px solid rgba(0,0,0,.06); }
+.task { height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; }
+.task img { width: 16px; height: 16px; }
+.task .name { font-weight: 600; font-size: 13px; flex: 1; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; }
+.chip { font-size: 11px; font-weight: 500; padding: 2px 6px; border-radius: 5px; }
+.work { background: rgba(22,163,74,.13); color: #16a34a; }
+.think { background: rgba(99,102,241,.13); color: #6366f1; }
+.done { background: rgba(107,114,128,.13); color: #52525b; }
+.pet { position: absolute; right: 150px; bottom: 70px; width: 280px; height: 280px;
+  filter: drop-shadow(0 18px 16px rgba(40,60,50,.18)); }
+.pet img { width: 100%; height: 100%; object-fit: contain; }
+
+
+</style></head><body><div class="desktop"><div class="menubar"><svg class="apple" width="14" height="16" viewBox="0 0 14 17" aria-hidden="true"><path fill="#1c1c1e" d="M11.2 8.9c0-2 1.6-3 1.7-3.1-1-1.4-2.4-1.6-2.9-1.6-1.2-.1-2.4.7-3 .7s-1.6-.7-2.6-.7c-1.4 0-2.6.8-3.3 2-1.4 2.5-.4 6.1 1 8.1.7 1 1.5 2.1 2.5 2 1 0 1.4-.7 2.6-.7s1.6.7 2.6.6c1.1 0 1.8-1 2.4-2 .8-1.1 1.1-2.2 1.1-2.3-.1 0-2.1-.8-2.1-3zM9.5 3.2c.5-.7.9-1.6.8-2.5-.8 0-1.7.5-2.2 1.2-.5.6-.9 1.5-.8 2.4.9.1 1.7-.4 2.2-1.1z"/></svg><span>AgentHalo</span><span>文件</span><span>编辑</span><span>窗口</span><span class="sp"></span><span class="right"><span>周三 9月23日</span><span>9:41</span></span></div><div class="window">
+      <div class="titlebar"><span class="lights"><i class="r"></i><i class="y"></i><i class="g"></i></span><b>AgentHalo 设置</b></div>
+      <div class="app" style="min-height:0;flex:1">
+        <nav class="sidebar"><div class="sidebar-brand"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/assets/icon.png" alt=""><span>AgentHalo</span></div><button class="sidebar-item" type="button"><span class="sidebar-item-label">桌面伙伴</span></button><button class="sidebar-item active" type="button"><span class="sidebar-item-label">连接应用</span></button><button class="sidebar-item" type="button"><span class="sidebar-item-label">通用</span></button><button class="sidebar-item" type="button"><span class="sidebar-item-label">关于</span></button></nav>
+        <main class="content" style="overflow:auto">
+<h1>连接应用</h1>
+<p class="subtitle">接入你常用的 AI 应用，在桌面查看任务状态。</p>
+<div style="display:flex;gap:8px;margin-bottom:16px">
+  <button class="soft-btn accent" type="button">已接入</button>
+  <button class="soft-btn" type="button">发现并添加</button>
+</div>
+<div class="section" style="margin-bottom:14px">
+      <div class="section-rows">
+        <div class="row">
+          <div class="row-text">
+            <span class="row-label" style="display:flex;align-items:center;gap:8px"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/assets/icons/agents/claude-code.png" width="18" height="18" alt="">Claude Code</span>
+            <span class="row-desc agent-badges"><span class="agent-badge integration">已接入</span></span>
+          </div>
+          <div class="switch on"></div>
+        </div>
+        <div class="row row-sub">
+          <div class="row-text">
+            <span class="row-label">已授权：~/.claude</span>
+            <span class="row-desc">商店版只会在你选中该工具的配置文件夹后写入 hook。</span>
+          </div>
+          <button class="soft-btn" type="button">更换目录</button>
+        </div>
+      </div>
+    </div>
+<div class="section" style="margin-bottom:14px">
+      <div class="section-rows">
+        <div class="row">
+          <div class="row-text">
+            <span class="row-label" style="display:flex;align-items:center;gap:8px"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/assets/icons/agents/codex.png" width="18" height="18" alt="">Codex</span>
+            <span class="row-desc agent-badges"><span class="agent-badge integration">已接入</span></span>
+          </div>
+          <div class="switch on"></div>
+        </div>
+        <div class="row row-sub">
+          <div class="row-text">
+            <span class="row-label">已授权：~/.codex</span>
+            <span class="row-desc">商店版只会在你选中该工具的配置文件夹后写入 hook。</span>
+          </div>
+          <button class="soft-btn" type="button">更换目录</button>
+        </div>
+      </div>
+    </div>
+<div class="section" style="margin-bottom:14px">
+      <div class="section-rows">
+        <div class="row">
+          <div class="row-text">
+            <span class="row-label" style="display:flex;align-items:center;gap:8px"><img src="file:///Users/martin/Desktop/AgentHalo-MAS/agenthalo/assets/icons/agents/cursor-agent.png" width="18" height="18" alt="">Cursor</span>
+            <span class="row-desc agent-badges"><span class="agent-badge integration not-installed">未接入</span></span>
+          </div>
+          <div class="switch"></div>
+        </div>
+        <div class="row row-sub">
+          <div class="row-text">
+            <span class="row-label">尚未授权目录</span>
+            <span class="row-desc">商店版只会在你选中该工具的配置文件夹后写入 hook。</span>
+          </div>
+          <button class="soft-btn" type="button">选择文件夹</button>
+        </div>
+      </div>
+    </div>
+</main>
+      </div>
+    </div></div></body></html>
