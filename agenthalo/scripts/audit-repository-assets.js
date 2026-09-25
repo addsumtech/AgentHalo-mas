@@ -80,24 +80,37 @@ function matchesAnyGlob(filePath, globs) {
   return (globs || []).some((glob) => matchesGlob(filePath, glob));
 }
 
-// electron-builder file patterns: evaluated in order, a later "!pattern"
-// excludes what earlier patterns included (and a later positive pattern can
-// include it again). Only the plain glob grammar above is accepted after "!".
-function validatePackageGlobs(globs) {
-  for (const glob of globs || []) {
-    const negated = typeof glob === "string" && glob.startsWith("!");
-    globToRegExp(negated ? glob.slice(1) : glob);
-  }
+// `{a,b}` alternation, as electron-builder's minimatch expands it. Only used
+// for build.files; policy globs stay brace-free.
+function expandBraces(glob) {
+  const match = /\{([^{}]*)\}/.exec(glob);
+  if (!match) return [glob];
+  const before = glob.slice(0, match.index);
+  const after = glob.slice(match.index + match[0].length);
+  return match[1].split(",").flatMap((alternative) => expandBraces(`${before}${alternative}${after}`));
 }
 
-function matchesPackageGlobs(filePath, globs) {
-  let matched = false;
-  for (const glob of globs || []) {
-    const negated = glob.startsWith("!");
-    if (matched !== negated) continue;
-    matched = matchesGlob(filePath, negated ? glob.slice(1) : glob) ? !negated : matched;
+// build.files is ordered: electron-builder lets the last matching pattern
+// decide, so a later `!pattern` removes files an earlier pattern added.
+function compileBuildFiles(globs) {
+  return (globs || []).map((glob) => {
+    if (typeof glob !== "string" || !glob.trim()) {
+      throw new TypeError("glob must be a non-empty string");
+    }
+    const negate = glob.startsWith("!");
+    const body = negate ? glob.slice(1) : glob;
+    return { glob, negate, regexes: expandBraces(normalizePath(body)).map(globToRegExp) };
+  });
+}
+
+function matchesBuildFiles(filePath, compiled) {
+  const target = normalizePath(filePath);
+  let included = false;
+  for (const pattern of compiled) {
+    if (pattern.negate !== included) continue;
+    if (pattern.regexes.some((regex) => regex.test(target))) included = !pattern.negate;
   }
-  return matched;
+  return included;
 }
 
 function sha256File(filePath) {
@@ -202,19 +215,16 @@ function packageEntry(fullPath, sourcePath, packagePath, origin, asarUnpack) {
 }
 
 function buildSourcePackageManifest(repoRoot, build, revision) {
-  // Pattern order matters for "!" exclusions, so match against the configured
-  // order and only sort for the stable manifest output.
-  const fileGlobs = build.files || [];
-  const unpackPatterns = build.asarUnpack || [];
-  validatePackageGlobs(fileGlobs);
-  validatePackageGlobs(unpackPatterns);
-  const buildFiles = stableSort(fileGlobs);
-  const unpackGlobs = stableSort(unpackPatterns);
+  const buildFiles = stableSort(build.files || []);
+  const unpackGlobs = stableSort(build.asarUnpack || []);
+  // Compile eagerly so unsupported syntax fails even in an empty repository.
+  const compiledBuildFiles = compileBuildFiles(build.files || []);
+  for (const glob of unpackGlobs) globToRegExp(glob);
   const allFiles = walkFiles(repoRoot);
   const appSources = new Map();
 
   for (const file of allFiles) {
-    if (matchesPackageGlobs(file.path, fileGlobs)) appSources.set(file.path, file);
+    if (matchesBuildFiles(file.path, compiledBuildFiles)) appSources.set(file.path, file);
   }
 
   const implicitPackageJson = path.join(repoRoot, "package.json");
@@ -228,7 +238,7 @@ function buildSourcePackageManifest(repoRoot, build, revision) {
       file.path,
       `app/${file.path}`,
       "build.files",
-      matchesPackageGlobs(file.path, unpackPatterns),
+      matchesAnyGlob(file.path, unpackGlobs),
     ));
 
   const extraResources = (build.extraResources || []).map((entry) => ({
@@ -825,8 +835,10 @@ module.exports = {
   buildExtractedPackageManifest,
   buildSourcePackageManifest,
   findForeignNativeFiles,
+  compileBuildFiles,
   globToRegExp,
   inspectNativeBuffer,
+  matchesBuildFiles,
   matchesGlob,
   parseArgs,
   parseTrackedTree,

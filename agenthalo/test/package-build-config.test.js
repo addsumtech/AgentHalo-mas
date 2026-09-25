@@ -19,7 +19,7 @@ function matchedByAnyGlob(globs, target) {
   for (const glob of globs) {
     const negated = glob.startsWith("!");
     if (matched !== negated) continue;
-    if (minimatch(target, negated ? glob.slice(1) : glob)) matched = !negated;
+    if (minimatch(target, negated ? glob.slice(1) : glob, { dot: true })) matched = !negated;
   }
   return matched;
 }
@@ -154,6 +154,22 @@ describe("Electron fuses", () => {
 });
 
 describe("store package contents", () => {
+  it("applies build.files excludes in order", () => {
+    assert.strictEqual(matchedByAnyGlob(["src/**/*", "!src/b.js"], "src/a.js"), true);
+    assert.strictEqual(matchedByAnyGlob(["src/**/*", "!src/b.js"], "src/b.js"), false);
+    assert.strictEqual(matchedByAnyGlob(["!src/b.js"], "assets/x.png"), false, "an exclude never adds a file");
+    assert.strictEqual(isPackaged("src/main.js"), true);
+    assert.strictEqual(isPackaged("src/telegram-native-runner.js"), false);
+    assert.strictEqual(isPackaged("pwa/app.js"), false);
+    // Production dependencies are copied unless an exclude removes them.
+    const excludes = [...pkg.build.files, ...(pkg.build.mas.files || [])].filter((glob) => glob.startsWith("!"));
+    const dependencyPackaged = (target) => matchedByAnyGlob(["**/*", ...excludes], target);
+    assert.strictEqual(dependencyPackaged("node_modules/ws/index.js"), false);
+    assert.strictEqual(dependencyPackaged("node_modules/koffi/index.js"), false);
+    assert.strictEqual(dependencyPackaged("node_modules/htmlparser2/lib/index.js"), true);
+    assert.strictEqual(isPackaged("assets/accessories/cigarette.svg"), false);
+  });
+
   it("ships project window icons, agent session icons and notices", () => {
     for (const glob of ["assets/icons/**/*", "assets/icons/agents/**/*", "NOTICE.md", "LICENSE"]) {
       assert.ok(pkg.build.files.includes(glob), `build.files should include ${glob}`);

@@ -9,11 +9,22 @@ const { minimatch } = require("minimatch");
 
 const {
   analyzeRuntimeReachability,
+  classifyBuildExcludes,
+  isPackagedByBuildFiles,
   scanSource,
   verifyBuildExcludes,
 } = require("../scripts/audit-runtime-reachability");
 
+const ROOT = path.resolve(__dirname, "..");
+const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const matchGlob = (file, glob) => minimatch(file, glob, { dot: true });
+
+// Static assets excluded from the package after a manual review. The audit
+// proves nothing reachable names them, but it cannot see a directory the
+// runtime enumerates, so a new asset exclude must be reviewed and added here.
+// pwa/ and assets/svg/ are never included in the store build, so the only
+// asset exclude is the retired accessory inside an included folder.
+const REVIEWED_ASSET_EXCLUDES = ["!assets/accessories/cigarette.svg"];
 
 function writeFiles(root, files) {
   for (const [file, content] of Object.entries(files)) {
@@ -29,6 +40,81 @@ function makeFixture(t, files) {
   writeFiles(root, files);
   return root;
 }
+
+describe("runtime reachability of the packaged app", () => {
+  const report = analyzeRuntimeReachability({ root: ROOT });
+
+  it("starts from main, every preload, every HTML script and the external agents/hooks trees", () => {
+    assert.ok(report.entryPoints.includes("src/main.js"));
+    for (const file of fs.readdirSync(path.join(ROOT, "src"))) {
+      if (/^preload.*\.js$/.test(file)) assert.ok(report.entryPoints.includes(`src/${file}`), file);
+    }
+    assert.ok(report.entryPoints.includes("src/settings-tab-general.js"), "settings.html <script src>");
+    assert.ok(report.entryPoints.includes("hooks/clawd-hook.js"));
+    assert.ok(report.entryPoints.includes("agents/codex-log-monitor.js"));
+  });
+
+  it("follows files the app loads by path rather than by require", () => {
+    const reachable = new Set(report.reachableSrc);
+    for (const file of [
+      "src/web-bridge-check-worker.js", // utilityProcess.fork(path.join(__dirname, ...))
+      "src/settings.html",
+      "src/settings.css",
+      "src/index.html",
+      "src/user-data-migration.js",
+    ]) {
+      assert.ok(reachable.has(file), `${file} must be reachable`);
+    }
+  });
+
+  it("proves every build.files exclude safe: no reachable src file, required package or referenced asset", () => {
+    assert.ok(report.dependencies.nodeModulesPresent, "node_modules is required to check dependency excludes");
+    for (const name of report.dependencies.used) {
+      assert.ok(fs.existsSync(path.join(ROOT, "node_modules", name, "package.json")), `${name} must be installed`);
+    }
+    assert.deepEqual(verifyBuildExcludes(report, pkg.build, matchGlob), []);
+  });
+
+  it("keeps each exclude to a shape the audit understands", () => {
+    const excludes = classifyBuildExcludes(pkg.build.files);
+    assert.deepEqual(excludes.other.map((entry) => entry.pattern).sort(), [...REVIEWED_ASSET_EXCLUDES].sort());
+    for (const { pattern, glob } of excludes.src) {
+      assert.ok(!/[*?{[]/.test(glob), `${pattern} must name one file so a new module is never excluded by accident`);
+    }
+    const negated = pkg.build.files.filter((entry) => entry.startsWith("!"));
+    const lastPositive = pkg.build.files.map((entry) => !entry.startsWith("!")).lastIndexOf(true);
+    assert.ok(pkg.build.files.indexOf(negated[0]) > lastPositive, "excludes come after every include");
+  });
+
+  it("excludes exactly the unreachable retired-feature modules", () => {
+    const excluded = classifyBuildExcludes(pkg.build.files).src.map((entry) => entry.glob).sort();
+    // Build-time contract read by scripts/after-pack-koffi.js and the native
+    // package audit; not a retired feature, so it stays packaged.
+    const keptUnreachable = ["src/koffi-package-contract.js"];
+    assert.deepEqual(excluded, report.unreachableSrc.filter((file) => !keptUnreachable.includes(file)));
+    for (const file of excluded) {
+      assert.match(
+        file,
+        /(?:remote-ssh|telegram|feishu|slack|discord|mobile|session-automation-remote)/,
+        `${file} should belong to a retired feature`,
+      );
+      assert.equal(isPackagedByBuildFiles(file, pkg.build.files, matchGlob), false, `${file} must not be packaged`);
+    }
+  });
+
+  it("drops the unused production dependencies but keeps them declared for retired-feature tests", () => {
+    const excludedDeps = new Set(classifyBuildExcludes(pkg.build.files).dependencies.map((entry) => entry.name));
+    for (const name of ["@larksuiteoapi/node-sdk", "electron-updater", "markdown-it", "ws"]) {
+      assert.ok(report.dependencies.unused.includes(name), `${name} is not required by reachable code`);
+      assert.ok(excludedDeps.has(name), `${name} should not be packaged`);
+      assert.ok(pkg.dependencies[name], `${name} stays declared`);
+    }
+    for (const name of report.dependencies.used) {
+      assert.equal(excludedDeps.has(name), false, `${name} is required at run time`);
+    }
+    assert.deepEqual(report.dependencies.used, ["htmlparser2", "jsonc-parser", "koffi"]);
+  });
+});
 
 describe("runtime reachability scanner", () => {
   it("tells require calls from require text in comments, strings and regular expressions", () => {

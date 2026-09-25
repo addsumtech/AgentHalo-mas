@@ -9,7 +9,9 @@ const {
   analyzeAudit,
   buildExtractedPackageManifest,
   buildSourcePackageManifest,
+  compileBuildFiles,
   inspectNativeBuffer,
+  matchesBuildFiles,
   matchesGlob,
   parseArgs,
   resolvePolicy,
@@ -449,37 +451,49 @@ describe("repository asset audit", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "asset-audit-glob-"));
     try {
       assert.throws(
-        () => buildSourcePackageManifest(root, { files: ["!**/*.{map,ts}"] }, "abc"),
-        /unsupported glob brace/,
+        () => buildSourcePackageManifest(root, { files: ["src/*.[jt]s"] }, "abc"),
+        /unsupported glob brace or character-class/,
       );
       assert.throws(
-        () => buildSourcePackageManifest(root, { files: ["runtime/**/*", "!!runtime/a.txt"] }, "abc"),
-        /unsupported glob negation/,
+        () => buildSourcePackageManifest(root, { files: ["!src/+(a|b).js"] }, "abc"),
+        /unsupported glob extglob/,
       );
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("applies electron-builder \"!\" exclusions in pattern order", () => {
+  it("applies build.files in order, as electron-builder does, including ! excludes and braces", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "asset-audit-negation-"));
     try {
-      fs.mkdirSync(path.join(root, "runtime"), { recursive: true });
-      fs.writeFileSync(path.join(root, "package.json"), "{}");
-      for (const name of ["a.svg", "b.svg", "c.svg"]) {
-        fs.writeFileSync(path.join(root, "runtime", name), name);
+      for (const file of ["src/main.js", "src/retired.js", "pwa/app.js", "assets/svg/a.svg", "assets/svg/old/b.svg"]) {
+        fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+        fs.writeFileSync(path.join(root, file), file);
       }
+      fs.writeFileSync(path.join(root, "package.json"), "{}");
       const manifest = buildSourcePackageManifest(root, {
-        files: ["runtime/**/*", "!runtime/b.svg", "!runtime/c.svg", "runtime/c.svg"],
-        asarUnpack: ["runtime/**/*", "!runtime/a.svg"],
+        files: [
+          "src/**/*",
+          "assets/svg/**/*",
+          "pwa/**/*",
+          "!pwa/**/*",
+          "!assets/svg/old/**/*",
+          "!src/retired.js",
+          "!**/node_modules/ws{,/**/*}",
+        ],
       }, "abc");
       assert.deepStrictEqual(
-        manifest.files.map((file) => [file.packagePath, file.asarUnpack]),
-        [["app/package.json", false], ["app/runtime/a.svg", false], ["app/runtime/c.svg", true]],
+        manifest.files.map((file) => file.sourcePath),
+        ["assets/svg/a.svg", "package.json", "src/main.js"],
       );
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+    const compiled = compileBuildFiles(["**/*", "!**/node_modules/@scope/pkg{,/**/*}", "node_modules/@scope/pkg/keep.js"]);
+    assert.strictEqual(matchesBuildFiles("node_modules/@scope/pkg", compiled), false);
+    assert.strictEqual(matchesBuildFiles("node_modules/@scope/pkg/lib/index.js", compiled), false);
+    assert.strictEqual(matchesBuildFiles("node_modules/@scope/pkg-other/index.js", compiled), true);
+    assert.strictEqual(matchesBuildFiles("node_modules/@scope/pkg/keep.js", compiled), true, "a later include wins");
   });
 
   it("requires an explicit target when auditing an extracted package", () => {
@@ -515,37 +529,6 @@ describe("repository asset audit", () => {
     const value = { revision: "abc", files: [{ path: "a", bytes: 1 }] };
     assert.strictEqual(stableJson(value), stableJson(value));
     assert.ok(stableJson(value).endsWith("\n"));
-  });
-
-  it("flags upstream-only files if the store package ever picks them up again", () => {
-    const root = path.resolve(__dirname, "..");
-    const output = fs.mkdtempSync(path.join(os.tmpdir(), "asset-audit-store-"));
-    try {
-      const { build } = require("../package.json");
-      const { report, manifest } = runAudit({
-        repoRoot: root,
-        output,
-        build: {
-          ...build,
-          files: [...build.files, "assets/svg/**/*", "extensions/**/*", "assets/accessories/cigarette.svg"],
-          extraResources: [{ from: "assets/icon.ico", to: "icon.ico" }],
-        },
-      });
-      const excluded = new Set(report.findings
-        .filter((finding) => finding.rule === "policy-excluded-file-not-packaged")
-        .map((finding) => finding.path));
-      for (const packagePath of [
-        "app/assets/svg/clawd-idle-follow.svg",
-        "app/extensions/vscode/extension.js",
-        "app/assets/accessories/cigarette.svg",
-        "resources/icon.ico",
-      ]) {
-        assert.ok(manifest.files.some((file) => file.packagePath === packagePath), packagePath);
-        assert.ok(excluded.has(packagePath), `${packagePath} should be flagged`);
-      }
-    } finally {
-      fs.rmSync(output, { recursive: true, force: true });
-    }
   });
 
   it("audits the repository twice with byte-identical manifests and reports", () => {

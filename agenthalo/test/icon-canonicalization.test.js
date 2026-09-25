@@ -59,11 +59,15 @@ test("canonical and tray-specific icons remain packaged", () => {
   }
 
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+  // build.files is ordered and may contain "!" excludes: the last matching
+  // pattern decides whether electron-builder packages a path.
+  const isPackaged = (relativePath) => pkg.build.files.reduce((included, pattern) => (
+    pattern.startsWith("!")
+      ? included && !minimatch(relativePath, pattern.slice(1))
+      : included || minimatch(relativePath, pattern)
+  ), false);
   for (const relativePath of PACKAGED_ICON_ASSETS) {
-    assert.ok(
-      pkg.build.files.some((pattern) => minimatch(relativePath, pattern)),
-      `${relativePath} must remain matched by build.files`,
-    );
+    assert.ok(isPackaged(relativePath), `${relativePath} must remain matched by build.files`);
   }
 });
 

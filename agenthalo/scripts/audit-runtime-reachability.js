@@ -73,6 +73,8 @@ function listFiles(root, relDir) {
   const out = [];
   const base = path.join(root, relDir);
   if (!fs.existsSync(base)) return out;
+  // An exclude can name a single file (`!assets/accessories/cigarette.svg`).
+  if (fs.statSync(base).isFile()) return [toPosix(relDir)];
   (function visit(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
       if (entry.name === "node_modules") continue;
