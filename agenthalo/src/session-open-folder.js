@@ -3,6 +3,33 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
+// On macOS a bundle is a directory, and shell.openPath hands it to Launch
+// Services, which launches an .app (or installs a .prefPane, runs a
+// .workflow...) instead of showing a folder. A session cwd comes from a hook
+// payload, so it must never name a bundle: not by its own extension, not
+// through a symlink's target, and not through the Contents/Info.plist layout
+// Launch Services can also recognise by the bundle bit alone.
+const BUNDLE_EXTENSIONS = new Set([
+  "action", "app", "appex", "bundle", "component", "dext", "driver",
+  "framework", "kext", "mdimporter", "mpkg", "osax", "pkg", "plugin",
+  "prefpane", "qlgenerator", "saver", "service", "systemextension",
+  "wdgt", "workflow", "xpc",
+]);
+
+function hasBundleExtension(folder) {
+  return BUNDLE_EXTENSIONS.has(path.extname(path.resolve(folder)).slice(1).toLowerCase());
+}
+
+async function looksLikeBundle(cwd, realPath) {
+  if (hasBundleExtension(cwd) || hasBundleExtension(realPath)) return true;
+  try {
+    await fs.promises.access(path.join(realPath, "Contents", "Info.plist"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function createSessionFolderOpener(options = {}) {
   const getSession = options.getSession;
   const openPath = options.openPath;
@@ -22,15 +49,22 @@ function createSessionFolderOpener(options = {}) {
     if (typeof cwd !== "string" || !path.isAbsolute(cwd)) {
       return { status: "not-available", reason: "invalid-cwd" };
     }
+    let realPath;
     try {
-      if (!(await fs.promises.stat(cwd)).isDirectory()) {
+      realPath = await fs.promises.realpath(cwd);
+      if (!(await fs.promises.stat(realPath)).isDirectory()) {
         return { status: "not-available", reason: "invalid-cwd" };
       }
     } catch (_err) {
       return { status: "not-available", reason: "invalid-cwd" };
     }
+    if (await looksLikeBundle(cwd, realPath)) {
+      return { status: "not-available", reason: "bundle" };
+    }
     try {
-      const errorMessage = await openPath(cwd);
+      // Open the resolved directory that was checked, so a symlink swapped
+      // after the check cannot redirect the open to a bundle.
+      const errorMessage = await openPath(realPath);
       if (errorMessage) return { status: "error", message: String(errorMessage) };
       return { status: "ok" };
     } catch (err) {
@@ -39,4 +73,4 @@ function createSessionFolderOpener(options = {}) {
   };
 }
 
-module.exports = { createSessionFolderOpener };
+module.exports = { createSessionFolderOpener, BUNDLE_EXTENSIONS };

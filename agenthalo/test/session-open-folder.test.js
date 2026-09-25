@@ -19,7 +19,8 @@ test("session folder opener re-resolves a local session and opens its existing c
   });
 
   assert.deepStrictEqual(await openSessionFolder("s1"), { status: "ok" });
-  assert.deepStrictEqual(opened, [cwd]);
+  // The resolved path that was checked (macOS tmpdir lives behind /var).
+  assert.deepStrictEqual(opened, [fs.realpathSync(cwd)]);
 });
 
 test("session folder opener rejects renderer-supplied paths and unsafe sessions", async (t) => {
@@ -66,4 +67,48 @@ test("session folder opener reports shell.openPath failures", async (t) => {
   const result = await openSessionFolder("s1");
   assert.strictEqual(result.status, "error");
   assert.match(result.message, /No application/);
+});
+
+test("session folder opener never hands a bundle to shell.openPath", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-session-folder-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const app = path.join(root, "Calculator.app");
+  const shouted = path.join(root, "Tool.APP");
+  const prefPane = path.join(root, "Setting.prefPane");
+  const workflow = path.join(root, "Run.workflow");
+  const bareBundle = path.join(root, "no-extension");
+  const project = path.join(root, "my.project");
+  for (const dir of [app, shouted, prefPane, workflow, project]) fs.mkdirSync(dir);
+  fs.mkdirSync(path.join(bareBundle, "Contents"), { recursive: true });
+  fs.writeFileSync(path.join(bareBundle, "Contents", "Info.plist"), "<plist/>");
+  const link = path.join(root, "innocent");
+  fs.symlinkSync(app, link, "dir");
+
+  const opened = [];
+  const sessions = new Map([
+    ["app", app],
+    ["app-trailing-slash", `${app}${path.sep}`],
+    ["uppercase", shouted],
+    ["prefpane", prefPane],
+    ["workflow", workflow],
+    ["bundle-bit-layout", bareBundle],
+    ["symlink-to-app", link],
+    ["project", project],
+  ].map(([id, cwd]) => [id, { cwd, host: null, platform: null }]));
+  const openSessionFolder = createSessionFolderOpener({
+    getSession: (id) => sessions.get(id),
+    openPath: async (folder) => { opened.push(folder); return ""; },
+  });
+
+  for (const id of ["app", "app-trailing-slash", "uppercase", "prefpane", "workflow", "bundle-bit-layout", "symlink-to-app"]) {
+    assert.deepStrictEqual(
+      await openSessionFolder(id),
+      { status: "not-available", reason: "bundle" },
+      id
+    );
+  }
+  assert.deepStrictEqual(opened, []);
+  // A dotted project folder is still an ordinary folder.
+  assert.deepStrictEqual(await openSessionFolder("project"), { status: "ok" });
+  assert.deepStrictEqual(opened, [fs.realpathSync(project)]);
 });
