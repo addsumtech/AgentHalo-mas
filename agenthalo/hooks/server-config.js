@@ -1232,6 +1232,80 @@ async function resolveWindowsNodeBinAsync(options = {}) {
   return null;
 }
 
+// ── Node binary memo ──
+// Resolving Node in the Electron app may spawn up to three interactive login
+// shells (5 s timeout each) when no well-known path has it, and every agent
+// integration sync asks again. The answer depends on the user's home, the
+// platform and PATH/shell, so remember it per process under that key: a found
+// binary is re-validated with one access() before reuse (an nvm version can
+// be removed), and a miss is retried after NODE_BIN_MISS_TTL_MS so Node
+// installed while the app runs is still picked up.
+//
+// Callers that inject their own probes (accessSync/execFileSync/readdirSync,
+// or access/execFile/readdir for the async form) bypass the memo unless they
+// pass `cache: true`; `cache: false` always bypasses it.
+const NODE_BIN_MISS_TTL_MS = 60 * 1000;
+const _nodeBinCache = new Map();
+
+function resetNodeBinCache() {
+  _nodeBinCache.clear();
+}
+
+function nodeBinCacheKey(options, platform) {
+  const env = options.env || process.env;
+  return JSON.stringify([
+    platform,
+    options.homeDir || os.homedir(),
+    env.PATH || env.Path || "",
+    options.shellPath || "",
+    env.SHELL || process.env.SHELL || "",
+    options.execPath || process.execPath,
+  ]);
+}
+
+function usesNodeBinCache(options, probeDefaults) {
+  if (options.cache === false) return false;
+  if (options.cache === true) return true;
+  return Object.keys(probeDefaults).every((name) => (
+    options[name] === undefined || options[name] === probeDefaults[name]()
+  ));
+}
+
+const SYNC_NODE_BIN_PROBES = {
+  accessSync: () => fs.accessSync,
+  execFileSync: () => require("child_process").execFileSync,
+  readdirSync: () => fs.readdirSync,
+};
+const ASYNC_NODE_BIN_PROBES = {
+  access: () => undefined,
+  execFile: () => undefined,
+  readdir: () => undefined,
+};
+
+function nodeBinCacheNow(options) {
+  return typeof options.now === "function" ? options.now() : Date.now();
+}
+
+// undefined = no usable entry; null = a recent miss; string = validated hit.
+function readNodeBinCacheEntry(key, options, validate) {
+  const entry = _nodeBinCache.get(key);
+  if (!entry) return undefined;
+  if (entry.value === null) {
+    if (nodeBinCacheNow(options) - entry.at < NODE_BIN_MISS_TTL_MS) return null;
+    _nodeBinCache.delete(key);
+    return undefined;
+  }
+  return validate(entry.value);
+}
+
+function isNodeBinProbeNeeded(options, platform) {
+  if (platform === "win32") return true;
+  const isElectron = options.isElectron !== undefined
+    ? options.isElectron
+    : !!process.versions.electron;
+  return isElectron;
+}
+
 /**
  * Resolve the absolute path to the Node.js binary for hook commands.
  * On macOS/Linux, Claude Code runs hooks with a minimal PATH (/usr/bin:/bin)
@@ -1248,6 +1322,7 @@ async function resolveWindowsNodeBinAsync(options = {}) {
  * @param {string} [options.execPath]
  * @param {boolean} [options.isElectron]
  * @param {object} [options.env]
+ * @param {boolean} [options.cache] — per-process memo; see "Node binary memo"
  * @returns {string|null} absolute path, or null when detection fails
  */
 // Mac App Store build: the sandboxed app can neither see nor probe the user's
@@ -1264,6 +1339,29 @@ function shouldUseBundledNodeLauncher(options = {}) {
 }
 
 function resolveNodeBin(options = {}) {
+  const platform = options.platform || process.platform;
+  if (!isNodeBinProbeNeeded(options, platform) || !usesNodeBinCache(options, SYNC_NODE_BIN_PROBES)) {
+    return resolveNodeBinUncached(options);
+  }
+  const key = nodeBinCacheKey(options, platform);
+  const access = options.accessSync || fs.accessSync;
+  const mode = platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK;
+  const cached = readNodeBinCacheEntry(key, options, (value) => {
+    try {
+      access(value, mode);
+      return value;
+    } catch {
+      _nodeBinCache.delete(key);
+      return undefined;
+    }
+  });
+  if (cached !== undefined) return cached;
+  const resolved = resolveNodeBinUncached(options);
+  _nodeBinCache.set(key, { value: resolved || null, at: nodeBinCacheNow(options) });
+  return resolved;
+}
+
+function resolveNodeBinUncached(options = {}) {
   const platform = options.platform || process.platform;
 
   if (platform === "win32") return resolveWindowsNodeBinSync(options);
@@ -1323,6 +1421,29 @@ function resolveNodeBin(options = {}) {
 }
 
 async function resolveNodeBinAsync(options = {}) {
+  const platform = options.platform || process.platform;
+  if (!isNodeBinProbeNeeded(options, platform) || !usesNodeBinCache(options, ASYNC_NODE_BIN_PROBES)) {
+    return resolveNodeBinAsyncUncached(options);
+  }
+  const key = nodeBinCacheKey(options, platform);
+  const access = options.access || fs.promises.access.bind(fs.promises);
+  const mode = platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK;
+  const entry = readNodeBinCacheEntry(key, options, (value) => value);
+  if (entry === null) return null;
+  if (entry !== undefined) {
+    try {
+      await access(entry, mode);
+      return entry;
+    } catch {
+      _nodeBinCache.delete(key);
+    }
+  }
+  const resolved = await resolveNodeBinAsyncUncached(options);
+  _nodeBinCache.set(key, { value: resolved || null, at: nodeBinCacheNow(options) });
+  return resolved;
+}
+
+async function resolveNodeBinAsyncUncached(options = {}) {
   const platform = options.platform || process.platform;
 
   if (platform === "win32") return await resolveWindowsNodeBinAsync(options);
@@ -1436,6 +1557,7 @@ module.exports = {
   readWindowsProcessChainHookContext,
   readWindowsProcessChainObservation,
   detectWslDistro,
+  resetNodeBinCache,
   resolveNodeBin,
   resolveNodeBinAsync,
   getBundledNodeLauncherPath,

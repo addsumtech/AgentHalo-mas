@@ -1301,3 +1301,127 @@ describe("server-config helpers", () => {
   });
 
 });
+
+describe("resolveNodeBin per-process memo", () => {
+  afterEach(() => serverConfig.resetNodeBinCache());
+
+  function shellOnlyProbe(nodePath, counters) {
+    return {
+      platform: "darwin",
+      isElectron: true,
+      cache: true,
+      env: { PATH: "/usr/bin:/bin", SHELL: "/bin/zsh" },
+      accessSync(candidate) {
+        counters.access += 1;
+        if (candidate === nodePath && counters.present) return;
+        throw new Error("ENOENT");
+      },
+      readdirSync() { throw new Error("ENOENT"); },
+      execFileSync(shell) {
+        counters.shells += 1;
+        if (shell === "/bin/zsh" && counters.present) return `${nodePath}\n`;
+        throw new Error("not found");
+      },
+    };
+  }
+
+  it("spawns login shells once and revalidates the remembered binary", () => {
+    const nodePath = "/Users/tester/.nvm/versions/node/v22.0.0/bin/node";
+    const counters = { access: 0, shells: 0, present: true };
+    const options = { ...shellOnlyProbe(nodePath, counters), homeDir: "/Users/tester" };
+
+    assert.strictEqual(serverConfig.resolveNodeBin(options), nodePath);
+    assert.strictEqual(counters.shells, 1);
+    const accessBefore = counters.access;
+    assert.strictEqual(serverConfig.resolveNodeBin(options), nodePath);
+    assert.strictEqual(counters.shells, 1, "a second sync must not spawn login shells");
+    assert.strictEqual(counters.access - accessBefore, 1, "a remembered binary is checked with one access()");
+
+    // The Node version was removed (e.g. `nvm uninstall`): resolve again.
+    counters.present = false;
+    assert.strictEqual(serverConfig.resolveNodeBin(options), null);
+    assert.ok(counters.shells > 1);
+  });
+
+  it("keys the memo by home directory, platform and PATH", () => {
+    const nodePath = "/Users/tester/.nvm/versions/node/v22.0.0/bin/node";
+    const counters = { access: 0, shells: 0, present: true };
+    const base = { ...shellOnlyProbe(nodePath, counters), homeDir: "/Users/tester" };
+
+    serverConfig.resolveNodeBin(base);
+    serverConfig.resolveNodeBin(base);
+    assert.strictEqual(counters.shells, 1);
+    serverConfig.resolveNodeBin({ ...base, homeDir: "/Users/other" });
+    assert.strictEqual(counters.shells, 2);
+    serverConfig.resolveNodeBin({ ...base, platform: "linux" });
+    assert.strictEqual(counters.shells, 3);
+    serverConfig.resolveNodeBin({ ...base, env: { ...base.env, PATH: "/opt/homebrew/bin:/usr/bin" } });
+    assert.strictEqual(counters.shells, 4);
+    serverConfig.resetNodeBinCache();
+    serverConfig.resolveNodeBin(base);
+    assert.strictEqual(counters.shells, 5, "resetNodeBinCache forgets every entry");
+  });
+
+  it("remembers a miss only briefly so a newly installed Node is found", () => {
+    const nodePath = "/usr/local/bin/node";
+    const counters = { access: 0, shells: 0, present: false };
+    let clock = 0;
+    const options = { ...shellOnlyProbe(nodePath, counters), homeDir: "/Users/tester", now: () => clock };
+
+    assert.strictEqual(serverConfig.resolveNodeBin(options), null);
+    const shellsAfterMiss = counters.shells;
+    assert.ok(shellsAfterMiss >= 1);
+    clock += 59_000;
+    assert.strictEqual(serverConfig.resolveNodeBin(options), null);
+    assert.strictEqual(counters.shells, shellsAfterMiss, "repeated syncs do not re-spawn shells right away");
+
+    counters.present = true;
+    clock += 1_000;
+    assert.strictEqual(serverConfig.resolveNodeBin(options), nodePath);
+  });
+
+  it("does not share remembered answers with callers that inject their own probes", () => {
+    const counters = { access: 0, shells: 0, present: true };
+    const probe = { ...shellOnlyProbe("/a/node", counters), homeDir: "/Users/tester" };
+    delete probe.cache;
+    serverConfig.resolveNodeBin(probe);
+    serverConfig.resolveNodeBin(probe);
+    assert.strictEqual(counters.shells, 2);
+    serverConfig.resolveNodeBin({ ...probe, cache: false });
+    assert.strictEqual(counters.shells, 3);
+  });
+
+  it("shares the memo between the sync and async resolvers", async () => {
+    const nodePath = "/Users/tester/.volta/bin/node";
+    let asyncShells = 0;
+    const found = await serverConfig.resolveNodeBinAsync({
+      platform: "darwin",
+      isElectron: true,
+      cache: true,
+      homeDir: "/Users/tester",
+      env: { PATH: "/usr/bin:/bin" },
+      async access(candidate) {
+        if (candidate === nodePath) return;
+        throw new Error("ENOENT");
+      },
+      async readdir() { throw new Error("ENOENT"); },
+      async execFile() { asyncShells += 1; throw new Error("not found"); },
+    });
+    assert.strictEqual(found, nodePath);
+    assert.strictEqual(asyncShells, 0);
+
+    const again = serverConfig.resolveNodeBin({
+      platform: "darwin",
+      isElectron: true,
+      cache: true,
+      homeDir: "/Users/tester",
+      env: { PATH: "/usr/bin:/bin" },
+      accessSync(candidate) {
+        if (candidate === nodePath) return;
+        throw new Error("ENOENT");
+      },
+      execFileSync() { throw new Error("must reuse the async answer"); },
+    });
+    assert.strictEqual(again, nodePath);
+  });
+});
