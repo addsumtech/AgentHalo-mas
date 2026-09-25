@@ -216,6 +216,40 @@ describe("Claude Code statusline adapter", () => {
   });
 });
 
+// kill(-pgid, 0) keeps succeeding while a killed member is a zombie. When the
+// sh wrapper dies its children are reparented to init, and an init that never
+// reaps orphans (the PID 1 of some Linux containers) leaves them as zombies
+// indefinitely even though SIGKILL did its job. On Linux, count only members
+// that are not zombies; elsewhere (macOS's launchd reaps them at once) the
+// plain group probe stays the whole check.
+function processGroupHasLiveMembers(pgid) {
+  try {
+    process.kill(-pgid, 0);
+  } catch {
+    return false;
+  }
+  if (process.platform !== "linux") return true;
+  let entries;
+  try {
+    entries = fs.readdirSync("/proc");
+  } catch {
+    return true;
+  }
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    let stat;
+    try {
+      stat = fs.readFileSync(`/proc/${entry}/stat`, "utf8");
+    } catch {
+      continue; // exited between readdir and read
+    }
+    // "pid (comm) state ppid pgrp ..." - comm may contain spaces or parens.
+    const [state, , pgrp] = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    if (Number(pgrp) === pgid && state !== "Z") return true;
+  }
+  return false;
+}
+
 describe("Claude Code statusline chain mode", () => {
   // Distinctive model name: chain tests yield the event loop (fake child
   // close is a setImmediate), so the test runner's own reporter lines can
@@ -339,12 +373,8 @@ describe("Claude Code statusline chain mode", () => {
       // member is dead. SIGKILL is not instantaneous — poll briefly.
       let alive = true;
       for (let i = 0; i < 100 && alive; i++) {
-        try {
-          process.kill(-spawned.pid, 0);
-          await new Promise((resolve) => setTimeout(resolve, 10));
-        } catch {
-          alive = false;
-        }
+        alive = processGroupHasLiveMembers(spawned.pid);
+        if (alive) await new Promise((resolve) => setTimeout(resolve, 10));
       }
       assert.strictEqual(alive, false, "process group members survived the cap kill");
     });
