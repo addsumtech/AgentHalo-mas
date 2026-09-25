@@ -2376,8 +2376,8 @@ function showPermissionBubble(permEntry) {
     permEntry.bubble = bub;
     permissionBubbleWindows.add(bub);
     permEntry.bubbleReady = false;
-    // macOS: text-input bubbles skip the native stationary treatment (SkyLight
-    // private space) that occludes the OS IME candidate window. They stay
+    // macOS: text-input bubbles skip the native stationary treatment (AppKit
+    // assistive-tech level) that occludes the OS IME candidate window. They stay
     // cross-space visible via Electron and drop out of always-on-top while a text
     // field is focused (handleImeEditing) so CJK input popups can surface.
     if (isMac && needsTextInput) bub.__clawdMacTextInputBubble = true;
@@ -2463,7 +2463,7 @@ function showPermissionBubble(permEntry) {
 
     // macOS: set alwaysOnTop BEFORE showInactive to prevent bubble from sinking.
     // (Text-input bubbles later drop out of always-on-top per-edit — and skip the
-    // native SkyLight path — so their IME candidate window can surface; that's
+    // native stationary path — so their IME candidate window can surface; that's
     // handled by handleImeEditing + reapplyMacVisibility, not a lower level here.)
     if (isMac) {
       bub.setAlwaysOnTop(true, MAC_TOPMOST_LEVEL);
@@ -4399,7 +4399,7 @@ function handleQueueSelect(event, selection) {
 // macOS only: while a text input inside the bubble is focused, the bubble must
 // drop out of always-on-top so the OS IME candidate window (Chinese/Japanese/
 // Korean input popup) can surface — it floats above normal windows only, so any
-// always-on-top level (and the native SkyLight stationary path) occludes it.
+// always-on-top level (and the native stationary path) occludes it.
 // We only flip the __clawdMacImeEditing flag here and let reapplyMacVisibility()
 // apply the actual editing-vs-normal window state, so both directions round-trip
 // through one place (topmost-runtime.js) instead of being hand-rolled twice.

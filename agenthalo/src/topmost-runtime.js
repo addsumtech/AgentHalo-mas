@@ -31,9 +31,10 @@ const FSAUTOHIDE_ANONYMOUS_EXIT_TICKS = 2;
 const HWND_RECOVERY_DELAY_MS = 1000;
 // #640: while a bubble text field is focused AND the pet visually overlaps that
 // bubble, the pet fades to this opacity and its hit window goes click-through.
-// The pet lives in the SkyLight private space (always above the editing bubble,
-// which drops to the normal level — #626), so until a native de-delegation
-// exists this is the polite way to keep the input box readable and clickable.
+// The pet sits at the assistive-tech level (always above the editing bubble,
+// which drops to the normal level — #626). The store build has no native
+// de-delegation (mac-window.js uses public AppKit only), so this is the polite
+// way to keep the input box readable and clickable.
 const IME_EDIT_PET_FADE_OPACITY = 0.18;
 const IME_EDIT_PET_FADE_MS = 160;
 
@@ -95,7 +96,7 @@ function createTopmostRuntime(options = {}) {
   const isMiniTransitioning = options.isMiniTransitioning || (() => false);
   const applyStationaryCollectionBehavior = options.applyStationaryCollectionBehavior
     || defaultApplyStationaryCollectionBehavior;
-  // #640 phase 2: pulls a pet window OUT of the SkyLight private space so it
+  // #640 phase 2: pulls a pet window OUT of the private stationary Space so it
   // drops to a normal window level and sits BEHIND the editing bubble instead
   // of merely fading. Restore is applyStationaryCollectionBehavior (idempotent).
   const deDelegateWindowFromStationarySpace = options.deDelegateWindowFromStationarySpace
@@ -219,7 +220,7 @@ function createTopmostRuntime(options = {}) {
     return win === getWin() || win === getHitWin();
   }
 
-  // #640 phase 2: pull both pet windows out of the SkyLight private space so
+  // #640 phase 2: pull both pet windows out of the private stationary Space so
   // they fall to a normal level and sit behind the editing bubble. Success is
   // judged by the render window (that's what determines visibility / whether the
   // fade fallback is needed); the hit window is de-delegated for click ordering.
@@ -278,7 +279,7 @@ function createTopmostRuntime(options = {}) {
       win.setAlwaysOnTop(true, MAC_TOPMOST_LEVEL);
       // Text-input bubbles stay cross-space visible via Electron only — the
       // native stationary path (applyStationaryCollectionBehavior) delegates the
-      // window into a SkyLight private space that occludes the OS IME candidate
+      // window into a private stationary Space that occludes the OS IME candidate
       // window, so it's skipped here (permission.js __clawdMacTextInputBubble).
       if (win.__clawdMacTextInputBubble) {
         applyElectronCrossSpace(win);
@@ -308,7 +309,7 @@ function createTopmostRuntime(options = {}) {
   // #640 Phase 2: the dodge triggers on the pet OVERLAPPING a text-input bubble
   // (permission.js flags elicitation / ExitPlanMode bubbles __clawdMacTextInputBubble
   // at creation) — NOT merely on a focused text field (__clawdMacImeEditing).
-  // Why: #626 deliberately keeps text-input bubbles OUT of the SkyLight private
+  // Why: #626 deliberately keeps text-input bubbles OUT of the private stationary
   // space so the OS IME candidate window can surface, but that same treatment
   // leaves the pet (private space, assistive-tech level) sitting ON TOP of them
   // from the moment they appear — covering the options and the input box before
@@ -359,11 +360,12 @@ function createTopmostRuntime(options = {}) {
   // petOverlapsTextInputBubble for why the trigger is overlap, not focus) the
   // pet politely steps back so the bubble — its options AND the box being typed
   // into — stays readable and clickable underneath.
-  // Phase 2 (#640): the primary path pulls both pet windows OUT of the SkyLight
-  // private space (deDelegateWindowFromStationarySpace) so they drop to a normal
+  // Phase 2 (#640): the primary path pulls both pet windows OUT of the private
+  // stationary Space (deDelegateWindowFromStationarySpace) so they drop to a normal
   // level and sit genuinely BEHIND the bubble — fully opaque, just behind. The
   // fade to IME_EDIT_PET_FADE_OPACITY is kept only as a FALLBACK for when native
-  // de-delegation is unavailable (FFI load failure returns false). Either way
+  // de-delegation is unavailable (it always is in the store build, which uses
+  // public AppKit only, and on FFI load failure). Either way
   // the hit window stops intercepting clicks. Edge-triggered on the overlap
   // state; every
   // transition path funnels here: handleImeEditing calls reapplyMacVisibility,

@@ -2,92 +2,80 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
 
-const { __test } = require("../src/mac-window");
+const macWindow = require("../src/mac-window");
 
-function makeTransaction(overrides = {}) {
-  const calls = [];
-  const transaction = {
-    activeSpace: 42,
-    level: 0,
-    addToActiveSpace: () => calls.push("add-active"),
-    removeFromPrivateSpace: () => calls.push("remove-private"),
-    setNativeLevel: (level) => calls.push(`level:${level}`),
-    restoreStationary: () => calls.push("restore-stationary"),
-    onFailure: () => calls.push("failure"),
-    ...overrides,
-  };
-  return { calls, transaction };
+const ROOT = path.join(__dirname, "..");
+const MAC_WINDOW = path.join(ROOT, "src", "mac-window.js");
+// App Review guideline 2.5.1: public APIs only. The upstream build loaded the
+// private window-server framework and called its SLS* symbols.
+const PRIVATE_API_PATTERNS = [
+  /PrivateFrameworks/,
+  /SkyLight/,
+  /\bSLS[A-Z][A-Za-z]+/,
+  /\bCGS[A-Z][A-Za-z]+/,
+];
+
+function listJsFiles(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...listJsFiles(full));
+    else if (entry.isFile() && entry.name.endsWith(".js")) out.push(full);
+  }
+  return out;
 }
 
-describe("macOS stationary Space de-delegation transaction", () => {
-  it("keeps optional de-delegation symbols separate from the base stationary API", () => {
-    const calls = [];
-    const lib = {
-      func(name) {
-        calls.push(name);
-        if (name === "SLSGetActiveSpace") throw new Error("symbol unavailable");
-        return () => {};
-      },
-    };
+function makeWindow() {
+  const calls = [];
+  return {
+    calls,
+    isDestroyed: () => false,
+    getNativeWindowHandle: () => {
+      calls.push("getNativeWindowHandle");
+      return Buffer.alloc(8);
+    },
+  };
+}
 
-    assert.strictEqual(__test.resolveSkyLightDeDelegateApi(lib), null);
-    assert.deepStrictEqual(calls, ["SLSRemoveWindowsFromSpaces", "SLSGetActiveSpace"]);
+describe("macOS window tweaks in the store build", () => {
+  it("keeps only public AppKit calls in mac-window.js", () => {
+    const source = fs.readFileSync(MAC_WINDOW, "utf8");
+    for (const pattern of PRIVATE_API_PATTERNS) {
+      assert.doesNotMatch(source, pattern);
+    }
+    assert.match(source, /\/usr\/lib\/libobjc\.A\.dylib/);
+    assert.match(source, /setCollectionBehavior:/);
   });
 
-  it("does not mutate Space membership or level without a valid active Space", () => {
-    const { calls, transaction } = makeTransaction({ activeSpace: 0 });
-
-    assert.strictEqual(__test.runDeDelegateTransaction(transaction), false);
-    assert.deepStrictEqual(calls, []);
-  });
-
-  it("adds to the active Space before removing the private Space and lowering the level", () => {
-    const { calls, transaction } = makeTransaction();
-
-    assert.strictEqual(__test.runDeDelegateTransaction(transaction), true);
-    assert.deepStrictEqual(calls, ["add-active", "remove-private", "level:0"]);
-  });
-
-  for (const failedStep of ["add-active", "remove-private", "level:0"]) {
-    it(`rolls back the stationary Space and level when ${failedStep} fails`, () => {
-      const { calls, transaction } = makeTransaction();
-      if (failedStep === "add-active") {
-        transaction.addToActiveSpace = () => {
-          calls.push("add-active");
-          throw new Error("add failed");
-        };
-      } else if (failedStep === "remove-private") {
-        transaction.removeFromPrivateSpace = () => {
-          calls.push("remove-private");
-          throw new Error("remove failed");
-        };
-      } else {
-        transaction.setNativeLevel = (level) => {
-          calls.push(`level:${level}`);
-          if (level === 0) throw new Error("level failed");
-        };
+  it("ships no private framework names in packaged source", () => {
+    for (const dir of ["src", "hooks", "agents"]) {
+      for (const file of listJsFiles(path.join(ROOT, dir))) {
+        const source = fs.readFileSync(file, "utf8");
+        for (const pattern of PRIVATE_API_PATTERNS) {
+          assert.doesNotMatch(source, pattern, `${path.relative(ROOT, file)} matches ${pattern}`);
+        }
       }
+    }
+  });
 
-      assert.strictEqual(__test.runDeDelegateTransaction(transaction), false);
-      const rollbackAt = calls.indexOf("restore-stationary");
-      assert.notStrictEqual(rollbackAt, -1);
-      assert.deepStrictEqual(calls.slice(rollbackAt), ["restore-stationary", "level:1500", "failure"]);
-    });
-  }
+  it("reports de-delegation as unavailable without touching the window", () => {
+    const win = makeWindow();
+    assert.strictEqual(macWindow.deDelegateWindowFromStationarySpace(win, 0), false);
+    assert.deepStrictEqual(win.calls, []);
+  });
 
-  it("still restores the native level when the stationary rollback itself fails", () => {
-    const { calls, transaction } = makeTransaction({
-      addToActiveSpace: () => {
-        throw new Error("add failed");
-      },
-      restoreStationary: () => {
-        calls.push("restore-stationary");
-        throw new Error("restore failed");
-      },
-    });
+  it("does not report a native stationary Space for missing or destroyed windows", () => {
+    assert.strictEqual(macWindow.applyStationaryCollectionBehavior(null), false);
+    assert.strictEqual(macWindow.applyStationaryCollectionBehavior({ isDestroyed: () => true }), false);
+  });
 
-    assert.strictEqual(__test.runDeDelegateTransaction(transaction), false);
-    assert.deepStrictEqual(calls, ["restore-stationary", "level:1500", "failure"]);
+  it("exports only the two window helpers", () => {
+    assert.deepStrictEqual(Object.keys(macWindow).sort(), [
+      "applyStationaryCollectionBehavior",
+      "deDelegateWindowFromStationarySpace",
+    ]);
   });
 });
