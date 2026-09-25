@@ -189,7 +189,14 @@ function createAgentRuntimeMain(options = {}) {
 
   function updateSessionFromServer(sessionId, state, event, opts = {}) {
     if (opts.agentId === "workbuddy" && !opts.host) {
-      if (workBuddyMonitor.isClosed(opts.rawSessionId || sessionId)) return false;
+      if (workBuddyMonitor.isClosed(opts.rawSessionId || sessionId)) {
+        // Archived tasks are not polled; activity on one asks once whether
+        // WorkBuddy restored it, so its following events are accepted again.
+        if (typeof workBuddyMonitor.recheckClosed === "function") {
+          workBuddyMonitor.recheckClosed(opts.rawSessionId || sessionId);
+        }
+        return false;
+      }
       workBuddyMonitor.start();
       // Independent command hooks may POST SessionStart after UserPromptSubmit.
       // Enrich its process metadata without resetting confirmed work or completion.

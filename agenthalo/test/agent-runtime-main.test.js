@@ -92,9 +92,12 @@ describe("agent-runtime-main", () => {
   it("preserves WorkBuddy work across late SessionStart and drops archived hooks", () => {
     const { state } = makeRealStateHarness();
     let closed = false;
+    const rechecked = [];
     const runtime = createAgentRuntimeMain({
       getStateRuntime: () => state, updateSession: state.updateSession,
-      createWorkBuddySessionMonitor: () => ({ start() {}, stop() {}, isClosed: () => closed }),
+      createWorkBuddySessionMonitor: () => ({
+        start() {}, stop() {}, isClosed: () => closed, recheckClosed: (id) => rechecked.push(id),
+      }),
     });
     const opts = { agentId: "workbuddy", profileId: "local", rawSessionId: "wb-order" };
     runtime.updateSessionFromServer("wb-order", "thinking", "UserPromptSubmit", opts);
@@ -109,6 +112,7 @@ describe("agent-runtime-main", () => {
     closed = true;
     assert.equal(runtime.updateSessionFromServer("wb-order", "thinking", "UserPromptSubmit", opts), false);
     assert.equal(state.sessions.has("wb-order"), false);
+    assert.deepEqual(rechecked, ["wb-order"], "activity on an archived task asks whether it was restored");
     runtime.cleanup(); state.cleanup();
   });
   it("removes an archived local Codex card and rejects late hooks without affecting remote sessions", () => {
