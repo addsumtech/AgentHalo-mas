@@ -134,6 +134,26 @@ function orcaPaneKeyFromEnv(env = process.env) {
 function applyOrcaPaneKey(body, env = process.env) {
   const orcaPaneKey = orcaPaneKeyFromEnv(env);
   if (orcaPaneKey) body.orca_pane_key = orcaPaneKey;
+  applySourceBundleId(body, env);
+  return body;
+}
+
+// The sandboxed Mac App Store app cannot inspect other processes, so its
+// hooks (started through hooks/node-launcher.sh, which sets
+// AGENTHALO_STORE_HOOK) report the bundle id of the app they run under —
+// macOS passes it down as __CFBundleIdentifier — and a click on the task
+// card activates that app. Every hook body goes through applyOrcaPaneKey,
+// so the field is added here rather than in each hook.
+function normalizeBundleId(value) {
+  if (typeof value !== "string") return null;
+  const id = value.trim();
+  return id.length <= 255 && /^[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)+$/.test(id) ? id : null;
+}
+
+function applySourceBundleId(body, env = process.env) {
+  if (!env || env.AGENTHALO_STORE_HOOK !== "1") return body;
+  const bundleId = normalizeBundleId(env.__CFBundleIdentifier);
+  if (bundleId) body.source_bundle_id = bundleId;
   return body;
 }
 
@@ -1092,6 +1112,8 @@ module.exports = {
   tmuxSocketFromEnv,
   orcaPaneKeyFromEnv,
   applyOrcaPaneKey,
+  applySourceBundleId,
+  normalizeBundleId,
   NESTED_TERMINAL_ENV,
   processAlive,
   WINDOWS_TERMINAL_WINDOW_CLASS,

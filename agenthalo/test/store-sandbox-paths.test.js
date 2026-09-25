@@ -71,3 +71,47 @@ describe("store sandbox tool paths", () => {
     assert.equal(monitor._archivedDir, path.join(home, ".codex", "archived_sessions"));
   });
 });
+
+describe("store build hook launcher", () => {
+  let root;
+  let previousMas;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "agenthalo-launcher-"));
+    previousMas = process.mas;
+    process.mas = true;
+  });
+
+  afterEach(() => {
+    process.mas = previousMas;
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("points hook commands at the executable launcher bundled with the hooks", () => {
+    const { resolveNodeBin, getBundledNodeLauncherPath } = require("../hooks/server-config");
+    const launcher = getBundledNodeLauncherPath();
+    assert.equal(resolveNodeBin({ isElectron: true }), launcher);
+    assert.equal(path.basename(launcher), "node-launcher.sh");
+    assert.ok(fs.statSync(launcher).mode & 0o111, "launcher must be executable");
+
+    const { registerHooks } = require("../hooks/install");
+    const home = path.join(root, "home");
+    fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+    registerHooks({ silent: true, homeDir: home, port: 23333 });
+    const settings = fs.readFileSync(path.join(home, ".claude", "settings.json"), "utf8");
+    assert.ok(settings.includes("node-launcher.sh"));
+  });
+
+  it("runs the hook script with node and passes stdin and arguments through", () => {
+    const { execFileSync } = require("node:child_process");
+    const { getBundledNodeLauncherPath } = require("../hooks/server-config");
+    const script = path.join(root, "echo.js");
+    fs.writeFileSync(script, "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(process.argv.slice(2).join(',')+'|'+s.trim()));");
+    const out = execFileSync(getBundledNodeLauncherPath(), [script, "PreToolUse", "x"], {
+      input: '{"a":1}',
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin` },
+    });
+    assert.equal(out.trim(), 'PreToolUse,x|{"a":1}');
+  });
+});

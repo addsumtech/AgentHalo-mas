@@ -1932,6 +1932,7 @@ function updateSession(sessionId, state, event, opts = {}) {
     tmuxSocket = null,
     tmuxClient = null,
     orcaPaneKey = null,
+    sourceBundleId = null,
     agentPid = null,
     agentId = null,
     profileId = "local",
@@ -2125,6 +2126,7 @@ function updateSession(sessionId, state, event, opts = {}) {
         tmuxSocket: srcTmuxSocket,
         tmuxClient: srcTmuxClient,
         orcaPaneKey: srcOrcaPaneKey,
+        sourceBundleId: sourceBundleId || (existing && existing.sourceBundleId) || null,
         agentPid: srcAgentPid,
         agentId: srcAgentId,
         profileId: (existing && existing.profileId) || profileId || "local",
@@ -2541,7 +2543,7 @@ function updateSession(sessionId, state, event, opts = {}) {
     clearSubagentTracker(subagentTracker);
   }
 
-  const base = { sourcePid: srcPid, wtHwnd: srcWtHwnd, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, tmuxSocket: srcTmuxSocket, tmuxClient: srcTmuxClient, orcaPaneKey: srcOrcaPaneKey, agentPid: srcAgentPid, agentId: srcAgentId, profileId: (existing && existing.profileId) || profileId || "local", rawSessionId: (existing && existing.rawSessionId) || rawSessionId || sessionId, sessionAutomationIdentity: srcSessionAutomationIdentity, host: srcHost, wslDistro: srcWslDistro, headless: srcHeadless, platform: srcPlatform, model: srcModel, provider: srcProvider, codexOriginator: srcCodexOriginator, codexSource: srcCodexSource, ghosttyTerminalId: srcGhosttyTerminalId, sessionTitle: srcSessionTitle, contextUsage: srcContextUsage, contextUsageOrigin: srcContextUsageOrigin, metadataUpdatedAt: srcMetadataUpdatedAt, assistantLastOutput: srcAssistantLastOutput, assistantLastOutputTruncated: srcAssistantLastOutputTruncated, lastToolName: srcToolName, transcriptPath: srcTranscriptPath, recentEvents, pidReachable, lastToolBoundaryAt: srcLastToolBoundaryAt, lastStopAt: srcLastStopAt, awaitingInputSinceStop: resolveAwaitingInputSinceStop(existing, event), muteNotificationSound: state === "notification" && muteNotificationSound === true, claudeBackgroundSubagentHoldAt };
+  const base = { sourcePid: srcPid, wtHwnd: srcWtHwnd, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, tmuxSocket: srcTmuxSocket, tmuxClient: srcTmuxClient, orcaPaneKey: srcOrcaPaneKey, sourceBundleId: sourceBundleId || (existing && existing.sourceBundleId) || null, agentPid: srcAgentPid, agentId: srcAgentId, profileId: (existing && existing.profileId) || profileId || "local", rawSessionId: (existing && existing.rawSessionId) || rawSessionId || sessionId, sessionAutomationIdentity: srcSessionAutomationIdentity, host: srcHost, wslDistro: srcWslDistro, headless: srcHeadless, platform: srcPlatform, model: srcModel, provider: srcProvider, codexOriginator: srcCodexOriginator, codexSource: srcCodexSource, ghosttyTerminalId: srcGhosttyTerminalId, sessionTitle: srcSessionTitle, contextUsage: srcContextUsage, contextUsageOrigin: srcContextUsageOrigin, metadataUpdatedAt: srcMetadataUpdatedAt, assistantLastOutput: srcAssistantLastOutput, assistantLastOutputTruncated: srcAssistantLastOutputTruncated, lastToolName: srcToolName, transcriptPath: srcTranscriptPath, recentEvents, pidReachable, lastToolBoundaryAt: srcLastToolBoundaryAt, lastStopAt: srcLastStopAt, awaitingInputSinceStop: resolveAwaitingInputSinceStop(existing, event), muteNotificationSound: state === "notification" && muteNotificationSound === true, claudeBackgroundSubagentHoldAt };
   if (preserveCompletionAck) base.requiresCompletionAck = true;
   // #862: every branch below rebuilds the session object from `base`; carry the
   // private identity tracker through without exposing it on snapshot surfaces.

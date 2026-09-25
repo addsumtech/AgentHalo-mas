@@ -1250,10 +1250,24 @@ async function resolveWindowsNodeBinAsync(options = {}) {
  * @param {object} [options.env]
  * @returns {string|null} absolute path, or null when detection fails
  */
+// Mac App Store build: the sandboxed app can neither see nor probe the user's
+// Node install, so hook commands start the launcher bundled next to the hook
+// scripts, which finds node at run time with the tool's own environment.
+function getBundledNodeLauncherPath() {
+  const { asarUnpackedPath } = require("./json-utils");
+  return asarUnpackedPath(path.resolve(__dirname, "node-launcher.sh").replace(/\\/g, "/"));
+}
+
+function shouldUseBundledNodeLauncher(options = {}) {
+  if (typeof options.useBundledNodeLauncher === "boolean") return options.useBundledNodeLauncher;
+  return process.mas === true;
+}
+
 function resolveNodeBin(options = {}) {
   const platform = options.platform || process.platform;
 
   if (platform === "win32") return resolveWindowsNodeBinSync(options);
+  if (shouldUseBundledNodeLauncher(options)) return getBundledNodeLauncherPath();
 
   const isElectron = options.isElectron !== undefined
     ? options.isElectron
@@ -1312,6 +1326,7 @@ async function resolveNodeBinAsync(options = {}) {
   const platform = options.platform || process.platform;
 
   if (platform === "win32") return await resolveWindowsNodeBinAsync(options);
+  if (shouldUseBundledNodeLauncher(options)) return getBundledNodeLauncherPath();
 
   const isElectron = options.isElectron !== undefined
     ? options.isElectron
@@ -1423,6 +1438,7 @@ module.exports = {
   detectWslDistro,
   resolveNodeBin,
   resolveNodeBinAsync,
+  getBundledNodeLauncherPath,
   resolveWindowsNodeBinSync,
   resolveWindowsNodeBinAsync,
   validateWindowsNodeCandidate,

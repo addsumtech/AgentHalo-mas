@@ -47,6 +47,7 @@ const { CLAUDE_QUOTA_FIELDS } = require("../hooks/claude-rate-limits");
 const { CODEX_QUOTA_FIELDS } = require("../hooks/codex-rate-limits");
 const { extractPermissionToolInput } = require("../hooks/kimi-hook");
 const { normalizeCodexUserInputWire } = require("../hooks/codex-user-input");
+const { normalizeBundleId } = require("../hooks/shared-process");
 const { sanitizeShadowRecord } = require("./windows-process-chain-shadow-log");
 
 // /state POST body size cap. Raised 1024 → 4096 → 16384: a CJK
@@ -262,6 +263,7 @@ function handleStatePost(req, res, options) {
       const tmuxSocket = normalizeTmuxSocket(data.tmux_socket);
       const tmuxClient = normalizeTmuxClient(data.tmux_client);
       const orcaPaneKey = normalizeOrcaPaneKey(data.orca_pane_key);
+      const sourceBundleId = normalizeBundleId(data.source_bundle_id);
       const rawAgentPid = data.agent_pid ?? data.claude_pid ?? data.cursor_pid;
       const agentPid = Number.isFinite(rawAgentPid) && rawAgentPid > 0 ? Math.floor(rawAgentPid) : null;
       const agentId = agentIdentity.agentId;
@@ -992,6 +994,7 @@ function handleStatePost(req, res, options) {
             tmuxSocket,
             tmuxClient,
             orcaPaneKey,
+            ...(sourceBundleId ? { sourceBundleId } : {}),
             agentPid: effectiveProcessMetadata.agentPid,
             agentId,
             ...(subagentId ? { subagentId } : {}),

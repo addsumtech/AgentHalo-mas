@@ -7,6 +7,20 @@ const os = require("os");
 const crypto = require("crypto");
 const path = require("path");
 const { execFile, spawn } = require("child_process");
+const { normalizeBundleId } = require("../hooks/shared-process");
+
+// Mac App Store build: the sandbox blocks ps, AppleScript and the terminal
+// CLIs the other focus paths rely on, so a click activates the app the store
+// hook reported (hooks/shared-process.js applySourceBundleId) through
+// LaunchServices, which needs no Automation consent.
+function activateMacAppByBundleId(bundleId, execFileFn = execFile, onError = null) {
+  const id = normalizeBundleId(bundleId);
+  if (!id) return "mas-no-bundle-id";
+  execFileFn("/usr/bin/open", ["-b", id], { timeout: 3000 }, (err) => {
+    if (err && typeof onError === "function") onError(id, err);
+  });
+  return "mas-open-bundle-submitted";
+}
 
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
@@ -711,6 +725,7 @@ function normalizeFocusRequest(sourcePidOrRequest, cwd, editor, pidChain, meta =
       tmuxSocket: normalizeTmuxSocket(request.tmuxSocket ?? request.tmux_socket),
       tmuxClient: normalizeTmuxClient(request.tmuxClient ?? request.tmux_client),
       orcaPaneKey: normalizeOrcaPaneKey(request.orcaPaneKey ?? request.orca_pane_key),
+      sourceBundleId: normalizeBundleId(request.sourceBundleId ?? request.source_bundle_id),
     };
   }
 
@@ -726,6 +741,7 @@ function normalizeFocusRequest(sourcePidOrRequest, cwd, editor, pidChain, meta =
     ghosttyTerminalId: normalizeGhosttyTerminalId(meta && (meta.ghosttyTerminalId ?? meta.ghostty_terminal_id)),
     tmuxSocket: normalizeTmuxSocket(meta && (meta.tmuxSocket ?? meta.tmux_socket)),
     tmuxClient: normalizeTmuxClient(meta && (meta.tmuxClient ?? meta.tmux_client)),
+    sourceBundleId: normalizeBundleId(meta && (meta.sourceBundleId ?? meta.source_bundle_id)),
     orcaPaneKey: normalizeOrcaPaneKey(meta && (meta.orcaPaneKey ?? meta.orca_pane_key)),
   };
 }
@@ -2124,6 +2140,13 @@ function requestMacFocus(request) {
 function focusTerminalWindow(sourcePidOrRequest, cwd, editor, pidChain, meta) {
   const request = normalizeFocusRequest(sourcePidOrRequest, cwd, editor, pidChain, meta);
   logFocusRequest(request);
+  if (isMac && process.mas === true) {
+    const result = activateMacAppByBundleId(request.sourceBundleId, execFile, (id) => {
+      logFocusResult(`branch=mas open-bundle-failed id=${safeLogValue(id)}`);
+    });
+    logFocusResult(`branch=mas reason=${result}`);
+    return normalizeFocusResultPayload({ reason: result });
+  }
   // A local source PID is the authority for every traditional terminal path.
   // Orca is the one exception: its pane key names a local IDE pane even when
   // the agent process itself runs through Orca's SSH PTY on another host.
@@ -2455,6 +2478,7 @@ return {
 // closure-only helpers like makeFocusCmd; this attaches the module-scoped
 // helpers separately.
 module.exports.__test = {
+  activateMacAppByBundleId,
   findSupersetDataDirs,
   supersetSchemeForDir,
   querySupersetWorkspaceId,

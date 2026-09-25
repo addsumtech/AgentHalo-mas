@@ -2397,6 +2397,16 @@ function getFocusableLocalHudSessionIds() {
 }
 
 function focusTerminalSession(session, sessionId, requestSource) {
+  // Store build: the app reported by the hook is enough to focus, even
+  // without a pid the sandbox could inspect.
+  if (session && !session.sourcePid && session.sourceBundleId && process.mas === true) {
+    return focusTerminalWindow({
+      sourceBundleId: session.sourceBundleId,
+      sessionId: String(sessionId),
+      agentId: session.agentId,
+      requestSource,
+    });
+  }
   if (!session || (!session.sourcePid && !session.orcaPaneKey)) return false;
   return focusTerminalWindow({
     sourcePid: session.sourcePid,
@@ -2407,6 +2417,7 @@ function focusTerminalSession(session, sessionId, requestSource) {
     tmuxSocket: session.tmuxSocket,
     tmuxClient: session.tmuxClient,
     orcaPaneKey: session.orcaPaneKey,
+    sourceBundleId: session.sourceBundleId,
     ghosttyTerminalId: session.ghosttyTerminalId,
     sessionId: String(sessionId),
     agentId: session.agentId,
@@ -2429,6 +2440,14 @@ function focusDashboardSession(sessionId, options = {}) {
 
   const focusEntry = { ...(session || {}), ...(fallbackEntry || {}), id };
   const focusTarget = getSessionFocusTarget(focusEntry, { osPlatform: process.platform });
+  if (focusTarget.type === "web-chat" && focusTarget.url && process.mas === true) {
+    // Store build: switching browser tabs needs Apple Events, which the
+    // sandbox blocks, so open the conversation in the browser instead.
+    shell.openExternal(focusTarget.url).catch(() => {
+      focusLog(`focus result branch=web-chat-open reason=open-failed source=${requestSource} sid=${id}`);
+    });
+    return true;
+  }
   if (focusTarget.type === "web-chat" && focusTarget.url) {
     focusWebSessionTarget({
       url: focusTarget.url,
