@@ -8,8 +8,7 @@ application directory and does not run as a repository-root GitHub workflow.
 
 1. Keep the app's `package.json`, `package-lock.json`, and the sibling
    `agenthalo-installer/package.json` on the same release version.
-2. Add `docs/releases/release-vX.Y.Z.md`; explicitly stage the release note
-   because the inherited `docs/**` ignore rule excludes new documents.
+2. Add `docs/releases/release-vX.Y.Z.md`.
 3. Run `npm run verify:release`, relevant tests, `npm test`, and `npm run audit:assets`.
    Record any pre-existing failures separately from release regressions.
 4. Build both architectures with `electron-builder --mac dmg zip --arm64 --x64 --publish never`.
