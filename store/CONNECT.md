@@ -35,7 +35,7 @@ AgentHalo 是一只安静待在桌面上的小伙伴。你的本地 AI 编程工
 
 隐私：任务状态只在你的 Mac 上处理。为了显示任务和气泡，AgentHalo 会收到任务标题、工具名、工作目录，以及完成时回复的简短摘录；这些内容不会存到 Mac 以外，也不会上传给苹果或我们。没有账号，没有统计。本机状态服务只监听 127.0.0.1。
 
-要接入某个工具，你需要在设置里亲手选择它的配置文件夹（例如 `~/.claude`）。AgentHalo 只在你授权的文件夹里写入 hook 配置，随时可以在设置里移除。
+要接入某个工具，你需要在设置里亲手选择它的配置文件夹（例如 `~/.claude`）。AgentHalo 只在你授权的文件夹里写入 hook 配置和一个 `agenthalo` 小文件夹，hook 配置随时可以在设置里移除。
 
 **关键词**  
 桌宠,AI,编程,效率,伴侣,任务,智能体,开发者,终端,提醒,命令行
@@ -58,7 +58,7 @@ AgentHalo sits on your Mac desktop and follows your local AI coding tools. When 
 
 Privacy: task status is processed only on your Mac. To show tasks and bubbles, AgentHalo receives task titles, tool names, working folders, and a short excerpt of the final reply when a task finishes. None of it is stored off your Mac or uploaded to Apple or to us. There is no account and no analytics. The local status server listens on 127.0.0.1 only.
 
-To connect a tool, you choose that tool's config folder in Settings (for example `~/.claude`). AgentHalo writes hook entries only in folders you authorize, and you can remove them in Settings at any time.
+To connect a tool, you choose that tool's config folder in Settings (for example `~/.claude`). AgentHalo writes its hook entries and a small `agenthalo` folder only in folders you authorize, and you can remove the hook entries in Settings at any time.
 
 **Keywords**  
 desktop,pet,AI,coding,companion,productivity,agent,developer,terminal,tasks,notification
@@ -106,7 +106,7 @@ AgentHalo runs a small HTTP server bound to 127.0.0.1 only, on the first free po
 
 WHY THE FOLDER PICKER (user-selected files and app-scoped bookmarks)
 
-App Sandbox blocks access to tool config folders such as ~/.claude or ~/.codex. In Settings → Connected apps, the user clicks "Choose folder" for a tool. The system open panel starts at that tool's folder (hidden folders shown), and AgentHalo accepts only that folder or a folder that contains it. AgentHalo saves a security-scoped bookmark in authorized-dirs.json inside its own container and uses it only to add or remove its hook entries in that tool's config folder and to read the tool's session files there. Canceling the panel writes nothing. Outside its own container, AgentHalo can reach only the folders the user picks. Removing a tool in Settings → Connected apps removes the hook entries again.
+App Sandbox blocks access to tool config folders such as ~/.claude or ~/.codex. In Settings → Connected apps, the user clicks "Choose folder" for a tool. The system open panel starts at that tool's folder (hidden folders shown), and AgentHalo accepts only that folder or a folder that contains it. AgentHalo saves a security-scoped bookmark in authorized-dirs.json inside its own container and uses it only to add or remove its hook entries in that tool's config folder, to read the tool's session files there, and to keep a small "agenthalo" subfolder there. That subfolder holds runtime.json (the local port and process id, removed on quit) so the hooks, which run outside the sandbox, can find the app without reading its container; for Codex, the auto-start setting; and for Claude Code, short-lived records of running tasks that the hook writes so the app can show them again after a restart. Canceling the panel writes nothing. Outside its own container, AgentHalo can reach only the folders the user picks. Removing a tool in Settings → Connected apps removes the hook entries again.
 
 NO APPLE EVENTS
 

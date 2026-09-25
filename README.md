@@ -3,7 +3,7 @@
 This tree is the **store-only** build. It is not the GitHub / `npx agenthalo` full app.
 
 - Bundle id: `com.addsum.agenthalo`
-- Sandbox: users must pick each tool’s config folder in Settings before hooks are written. AgentHalo keeps a security-scoped bookmark for that folder and writes only its hook entries there.
+- Sandbox: users must pick each tool’s config folder in Settings before hooks are written. AgentHalo keeps a security-scoped bookmark for that folder and writes only its hook entries there, plus an `agenthalo/` subfolder (runtime port, Codex auto-start setting, Claude task recovery records) that the hooks read instead of the app container.
 - Local status server: `127.0.0.1` only, first free port from 23333 to 23337.
 - Built-in characters: 17 original companions plus Sun Wukong. No likenesses of real people, living or deceased, and no third-party characters.
 - Not in the store build: Apple Events, the VS Code extension, the browser extension, the retired remote features (Telegram, Feishu/Lark, Slack, Discord, remote SSH, WSL, LAN preview) and the self-updater. Updates come only from the Mac App Store.

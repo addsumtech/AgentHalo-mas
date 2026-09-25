@@ -44,7 +44,7 @@ Drag it anywhere. Settings → Preferences adjusts size, and Do Not Disturb sile
 
 1. Settings → Connected apps → turn off each connected tool and choose to disconnect it. This deletes the hooks AgentHalo added to their configuration folders.
 2. Quit AgentHalo and move it to the Trash.
-3. To remove local data and folder authorizations as well, delete `~/Library/Containers/com.addsum.agenthalo/`.
+3. To remove local data and folder authorizations as well, delete `~/Library/Containers/com.addsum.agenthalo/` and the `agenthalo` folder inside each tool folder you authorized (for example `~/.claude/agenthalo/`).
 
 ## Privacy
 
@@ -108,7 +108,7 @@ AgentHalo 跟随系统：Mac 静音或输出音量为零时它会保持安静。
 
 1. 设置 → 连接应用 → 逐个关掉已连接的工具，并选择断开连接。这会删掉 AgentHalo 装进它们配置文件夹的 hook。
 2. 退出 AgentHalo 并移到废纸篓。
-3. 如果连本地数据和文件夹授权一起清掉，删除 `~/Library/Containers/com.addsum.agenthalo/`。
+3. 如果连本地数据和文件夹授权一起清掉，删除 `~/Library/Containers/com.addsum.agenthalo/`，以及你授权过的每个工具文件夹里的 `agenthalo` 文件夹（例如 `~/.claude/agenthalo/`）。
 
 ## 隐私
 
