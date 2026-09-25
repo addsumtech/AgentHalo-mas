@@ -15,7 +15,20 @@ test("Koffi native code is pinned exactly in package and lock metadata", () => {
   assert.equal(entry.version, EXPECTED_VERSION);
   assert.equal(entry.integrity, EXPECTED_INTEGRITY);
   assert.equal(entry.hasInstallScript, true);
-  assert.match(entry.resolved, /^https:\/\/(?:registry\.npmjs\.org|registry\.npmmirror\.com)\/koffi\//);
+  assert.match(entry.resolved, /^https:\/\/registry\.npmjs\.org\/koffi\//);
+});
+
+test("every locked package resolves from the public npm registry", () => {
+  // A regional mirror in `resolved` makes `npm ci` fail wherever that mirror
+  // is unreachable (CI runners, most networks outside China). Tarballs are
+  // byte-identical across registries, so integrity is unaffected, and npm's
+  // default replace-registry-host=npmjs still sends these URLs to a mirror
+  // configured with `registry=` in .npmrc. Configure the mirror; do not
+  // commit it.
+  const offRegistry = Object.entries(lock.packages)
+    .filter(([, entry]) => entry.resolved && !entry.resolved.startsWith("https://registry.npmjs.org/"))
+    .map(([name, entry]) => `${name}: ${entry.resolved}`);
+  assert.deepEqual(offRegistry, []);
 });
 
 test("the Mac App Store package leaves Koffi out instead of pruning it", () => {
