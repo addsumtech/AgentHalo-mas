@@ -116,7 +116,6 @@
       "assets/dock-icon.png",
       "assets/tray-icon*.png",
       "hooks/**/*",
-      "extensions/**/*",
       "agents/**/*",
       "themes/**/*",
       "pwa/**/*"
@@ -125,7 +124,6 @@
       "assets/svg/**/*",
       "assets/accessories/**/*",
       "hooks/**/*",
-      "extensions/**/*",
       "agents/**/*",
       "themes/**/*",
       "node_modules/jsonc-parser/**/*"

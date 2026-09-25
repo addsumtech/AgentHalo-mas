@@ -3792,53 +3792,6 @@ Object.defineProperties(this || {}, {}); // no-op placeholder
 // injected deps. main.js remains the composition root; theme-runtime owns the
 // active theme source and the cleanup/refresh/reload protocol.
 
-// ── Auto-install VS Code / Cursor terminal-focus extension ──
-const EXT_ID = "clawd.clawd-terminal-focus";
-const EXT_VERSION = "0.1.2";
-const EXT_DIR_NAME = `${EXT_ID}-${EXT_VERSION}`;
-
-function installTerminalFocusExtension() {
-  const os = require("os");
-  const home = os.homedir();
-
-  // Extension source — in dev: ../extensions/vscode/, in packaged: app.asar.unpacked/
-  let extSrc = path.join(__dirname, "..", "extensions", "vscode");
-  extSrc = extSrc.replace("app.asar" + path.sep, "app.asar.unpacked" + path.sep);
-
-  if (!fs.existsSync(extSrc)) {
-    console.log("AgentHalo: terminal-focus extension source not found, skipping auto-install");
-    return;
-  }
-
-  const targets = [
-    path.join(home, ".vscode", "extensions"),
-    path.join(home, ".cursor", "extensions"),
-  ];
-
-  const filesToCopy = ["package.json", "extension.js"];
-  let installed = 0;
-
-  for (const extRoot of targets) {
-    if (!fs.existsSync(extRoot)) continue; // editor not installed
-    const dest = path.join(extRoot, EXT_DIR_NAME);
-    // Skip if already installed (check package.json exists)
-    if (fs.existsSync(path.join(dest, "package.json"))) continue;
-    try {
-      fs.mkdirSync(dest, { recursive: true });
-      for (const file of filesToCopy) {
-        fs.copyFileSync(path.join(extSrc, file), path.join(dest, file));
-      }
-      installed++;
-      console.log(`AgentHalo: installed terminal-focus extension to ${dest}`);
-    } catch (err) {
-      console.warn(`AgentHalo: failed to install extension to ${dest}:`, err.message);
-    }
-  }
-  if (installed > 0) {
-    console.log(`AgentHalo: terminal-focus extension installed to ${installed} editor(s). Restart VS Code/Cursor to activate.`);
-  }
-}
-
 // ── Single instance lock ──
 app.on("open-url", (event, url) => {
   event.preventDefault();
@@ -4102,11 +4055,6 @@ if (!gotTheLock) {
     // agent-gate snapshot — a user who disabled Codex at last shutdown
     // shouldn't see its file watcher spin up on the next launch.
     agentRuntime.startCodexLogMonitor();
-
-    // Auto-install VS Code/Cursor terminal-focus extension
-    try { installTerminalFocusExtension(); } catch (err) {
-      console.warn("AgentHalo: failed to auto-install terminal-focus extension:", err.message);
-    }
 
     // Auto-updater: setup event handlers (user triggers check via tray menu)
     setupAutoUpdater();

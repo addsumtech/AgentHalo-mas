@@ -122,10 +122,6 @@ describe("package build config", () => {
       "build.files should include hooks/**/*"
     );
     assert.ok(
-      pkg.build.files.includes("extensions/**/*"),
-      "build.files should include extensions/**/*"
-    );
-    assert.ok(
       pkg.build.files.includes("agents/**/*"),
       "build.files should include agents/**/*"
     );
@@ -138,8 +134,8 @@ describe("package build config", () => {
       "asarUnpack should include hooks/**/*"
     );
     assert.ok(
-      pkg.build.asarUnpack.includes("extensions/**/*"),
-      "asarUnpack should include extensions/**/*"
+      !matchedByAnyGlob([...pkg.build.files, ...pkg.build.asarUnpack], "extensions/vscode/extension.js"),
+      "the VS Code/Cursor extension must not be packaged (App Review 2.4.5(ii), 2.5.2)"
     );
   });
 
