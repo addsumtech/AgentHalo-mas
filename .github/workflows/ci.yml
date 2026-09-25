@@ -1,0 +1,29 @@
+name: CI
+
+# The repository root is one level above the Electron app. GitHub reads
+# workflows only from here, so agenthalo/.github/workflows/ never runs.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: agenthalo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: agenthalo/.nvmrc
+          cache: npm
+          cache-dependency-path: agenthalo/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run audit:assets
