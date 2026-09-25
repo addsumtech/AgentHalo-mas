@@ -17,7 +17,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { execFileSync } = require("child_process");
+const { execFile } = require("child_process");
 const CodexSubagentClassifier = require("./codex-subagent-classifier");
 const { readCodexThreadName } = require("../hooks/codex-session-index");
 const {
@@ -58,6 +58,9 @@ const REPLAY_RETRY_BASE_BACKOFF_MS = 30 * 1000;
 const REPLAY_RETRY_MAX_BACKOFF_MS = 5 * 60 * 1000;
 const RECOVERY_MAX_READ_ATTEMPTS = 8;
 const RECENT_DAY_DIR_CACHE_MS = 60 * 60 * 1000; // 1 hour
+// macOS rollout-owner inventory: one `lsof` over Codex processes at most this
+// often, run asynchronously so it never blocks the Electron main thread.
+const WRITER_PID_SCAN_INTERVAL_MS = 5000;
 // A rollout file is considered "active" if written within this window. Used by
 // both the untracked-file pickup gate in _poll and the _getActiveDayDirs scan
 // so slow Codex desktop sessions (3–5 min write cadence) aren't dropped by one
@@ -163,10 +166,16 @@ class CodexLogMonitor {
     this._config = agentConfig;
     this._onStateChange = onStateChange;
     this._platform = options.platform || process.platform;
-    this._execFileSync = options.execFileSync || execFileSync;
+    this._execFile = options.execFile || execFile;
+    // macOS rollout-owner inventory (lsof). The cache and validity describe the
+    // last COMPLETED scan; _writerPidCacheAt is when that scan started. A new
+    // scan starts at most every WRITER_PID_SCAN_INTERVAL_MS and never while
+    // one is still running.
     this._writerPidCache = new Map();
     this._writerPidCacheAt = 0;
     this._writerPidScanValid = false;
+    this._writerPidScanStartedAt = 0;
+    this._writerPidScanInFlight = null;
     this._classifier = options.classifier || new CodexSubagentClassifier();
     this._onUserInputRequest = typeof options.onUserInputRequest === "function"
       ? options.onUserInputRequest
@@ -1984,36 +1993,14 @@ class CodexLogMonitor {
   }
 
   // Match the process that owns this exact rollout, never the IDE's shared PID.
+  // On macOS this answers from the cached lsof inventory and only schedules a
+  // refresh; the scan itself runs off the main thread (see
+  // _refreshWriterPidCache), so a slow lsof never stalls polling or a state
+  // change. A pid first seen by an in-flight scan is picked up by the next call.
   _findCodexWriterPid(filePath) {
     if (!filePath) return null;
     if (this._platform === "darwin") {
-      if (Date.now() - this._writerPidCacheAt >= 5000) {
-        this._writerPidCacheAt = Date.now();
-        this._writerPidScanValid = false;
-        try {
-          const output = this._execFileSync("/usr/sbin/lsof", ["-n", "-P", "-c", "codex", "-Fpn"], {
-            encoding: "utf8", timeout: 750, maxBuffer: 2 * 1024 * 1024,
-            stdio: ["ignore", "pipe", "pipe"],
-          });
-          const next = new Map();
-          let pid = null;
-          for (const line of output.split("\n")) {
-            if (/^p\d+$/.test(line)) pid = Number(line.slice(1));
-            else if (pid > 1 && line.startsWith("n") && /\/rollout-[^/]+\.jsonl$/.test(line.slice(1))) {
-              next.set(line.slice(1), pid);
-            }
-          }
-          this._writerPidCache = next;
-          this._writerPidScanValid = true;
-        } catch (err) {
-          // lsof exits 1 when no process matches. Timeouts/permission failures
-          // leave the last known mapping intact; kill(pid, 0) still checks it.
-          if (err && err.status === 1 && !String(err.stdout || "").trim() && !String(err.stderr || "").trim()) {
-            this._writerPidCache.clear();
-            this._writerPidScanValid = true;
-          }
-        }
-      }
+      this._refreshWriterPidCache();
       const pid = this._writerPidCache.get(filePath);
       return pid && this._isProcessAlive(pid) ? pid : null;
     }
@@ -2045,6 +2032,63 @@ class CodexLogMonitor {
       }
     }
     return null;
+  }
+
+  // Start one asynchronous `lsof` inventory of Codex processes' open rollout
+  // files unless one is already running or the last started less than
+  // WRITER_PID_SCAN_INTERVAL_MS ago. Returns the in-flight Promise (resolved
+  // once the cache is updated) or null when no scan was needed.
+  _refreshWriterPidCache() {
+    if (this._writerPidScanInFlight) return this._writerPidScanInFlight;
+    const startedAt = Date.now();
+    if (startedAt - this._writerPidScanStartedAt < WRITER_PID_SCAN_INTERVAL_MS) return null;
+    this._writerPidScanStartedAt = startedAt;
+    const scan = new Promise((resolve) => {
+      const done = (err, stdout, stderr) => {
+        this._applyWriterPidScan(startedAt, err, stdout, stderr);
+        resolve();
+      };
+      try {
+        this._execFile("/usr/sbin/lsof", ["-n", "-P", "-c", "codex", "-Fpn"], {
+          encoding: "utf8", timeout: 750, maxBuffer: 2 * 1024 * 1024,
+        }, done);
+      } catch (err) {
+        done(err, "", "");
+      }
+    });
+    this._writerPidScanInFlight = scan;
+    scan.then(() => {
+      if (this._writerPidScanInFlight === scan) this._writerPidScanInFlight = null;
+    });
+    return scan;
+  }
+
+  _applyWriterPidScan(startedAt, err, stdout, stderr) {
+    const output = String(stdout || "");
+    if (err) {
+      // lsof exits 1 when no process matches. Timeouts/permission failures
+      // leave the last known mapping intact; kill(pid, 0) still checks it.
+      const exitCode = typeof err.code === "number" ? err.code : err.status;
+      if (exitCode === 1 && !output.trim() && !String(stderr || "").trim()) {
+        this._writerPidCache = new Map();
+        this._writerPidScanValid = true;
+      } else {
+        this._writerPidScanValid = false;
+      }
+      this._writerPidCacheAt = startedAt;
+      return;
+    }
+    const next = new Map();
+    let pid = null;
+    for (const line of output.split("\n")) {
+      if (/^p\d+$/.test(line)) pid = Number(line.slice(1));
+      else if (pid > 1 && line.startsWith("n") && /\/rollout-[^/]+\.jsonl$/.test(line.slice(1))) {
+        next.set(line.slice(1), pid);
+      }
+    }
+    this._writerPidCache = next;
+    this._writerPidScanValid = true;
+    this._writerPidCacheAt = startedAt;
   }
 
   _pruneTrackedFilesIfNeeded(maxSize = MAX_TRACKED_FILES) {

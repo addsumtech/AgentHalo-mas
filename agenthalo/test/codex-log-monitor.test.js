@@ -174,6 +174,51 @@ describe("CodexLogMonitor", () => {
     assert.equal(events.at(-1)[1], "thinking");
   });
 
+  it("ends a silent exec only after two asynchronous lsof inventories, without blocking reconcile", async () => {
+    const file = path.join(dateDir, TEST_FILENAME);
+    fs.writeFileSync(file, [
+      JSON.stringify({ type: "session_meta", payload: { cwd: "/project", source: "exec", originator: "codex_exec" } }),
+      JSON.stringify({ type: "event_msg", payload: { type: "task_started" } }), "",
+    ].join("\n"));
+    const ended = [];
+    const pending = [];
+    monitor = new CodexLogMonitor(makeConfig(tmpDir), () => {}, {
+      platform: "darwin",
+      onSessionClosed: (...args) => ended.push(args),
+      execFile: (_file, _args, _options, callback) => pending.push(callback),
+    });
+    monitor._pollFile(file, TEST_FILENAME);
+    const old = new Date(Date.now() - 60000);
+    fs.utimesSync(file, old, old);
+    const realNow = Date.now;
+    let now = realNow();
+    Date.now = () => now;
+    const noCodexProcess = () => Object.assign(new Error("exit 1"), { code: 1 });
+    try {
+      monitor._reconcileExitedExecSessions();
+      assert.equal(pending.length, 1, "the first reconcile only starts a scan");
+      assert.equal(ended.length, 0);
+      pending[0](noCodexProcess(), "", "");
+      await monitor._writerPidScanInFlight;
+
+      monitor._reconcileExitedExecSessions();
+      assert.equal(pending.length, 1, "a fresh inventory is reused");
+      assert.equal(ended.length, 0, "one inventory is not enough");
+
+      now += 5000;
+      monitor._reconcileExitedExecSessions();
+      assert.equal(pending.length, 2);
+      assert.equal(ended.length, 0, "the second scan has not answered yet");
+      pending[1](noCodexProcess(), "", "");
+      await monitor._writerPidScanInFlight;
+
+      monitor._reconcileExitedExecSessions();
+      assert.deepStrictEqual(ended, [[EXPECTED_SID, "exec-exited"]]);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
   it("never applies exec-exit cleanup to desktop tasks or an in-progress replay", () => {
     const file = path.join(dateDir, TEST_FILENAME);
     fs.writeFileSync(file, JSON.stringify({ type: "session_meta", payload: { cwd: "/project", source: "vscode" } }) + "\n");

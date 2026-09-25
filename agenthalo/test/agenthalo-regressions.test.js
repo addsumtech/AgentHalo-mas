@@ -7,24 +7,69 @@ const { getSessionFocusTarget, getCodexThreadId } = require("../src/session-focu
 const { getStaleSessionDecision } = require("../src/state-stale-cleanup");
 const { computeHudLayout, computeSessionHudBounds, computeHudHeight } = require("../src/session-hud").__test;
 
-test("macOS binds exact rollout files to the writer process and caches the scan", () => {
+test("macOS binds exact rollout files to the writer process and caches the scan", async () => {
   const one = "/Users/test/Chinese folder/rollout-one.jsonl";
   const two = "/Users/test/Chinese folder/rollout-two.jsonl";
   let calls = 0;
   const monitor = new CodexLogMonitor({ logConfig: { sessionDir: "/tmp/sessions" } }, () => {}, {
     platform: "darwin",
-    execFileSync() { calls++; return `p101\nn${one}\np202\nn${two}\n`; },
+    execFile(file, args, options, callback) {
+      calls++;
+      assert.equal(file, "/usr/sbin/lsof");
+      assert.deepEqual(args, ["-n", "-P", "-c", "codex", "-Fpn"]);
+      assert.equal(options.timeout, 750);
+      callback(null, `p101\nn${one}\np202\nn${two}\n`, "");
+    },
   });
   monitor._isProcessAlive = (pid) => pid === 101 || pid === 202;
   assert.equal(monitor._findCodexWriterPid(one), 101);
+  await monitor._writerPidScanInFlight;
   assert.equal(monitor._findCodexWriterPid(two), 202);
   assert.equal(monitor._findCodexWriterPid(one + "-other"), null);
   assert.equal(calls, 1);
-  monitor._writerPidCacheAt = 0;
-  monitor._execFileSync = () => { throw Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }); };
+  assert.equal(monitor._writerPidScanValid, true);
+  monitor._writerPidScanStartedAt = 0;
+  monitor._execFile = (_file, _args, _options, callback) => {
+    callback(Object.assign(new Error("timeout"), { killed: true, signal: "SIGTERM", code: null }), "", "");
+  };
   assert.equal(monitor._findCodexWriterPid(one), 101);
+  await monitor._writerPidScanInFlight;
+  assert.equal(monitor._writerPidScanValid, false, "a timed-out inventory is not evidence");
+  assert.equal(monitor._findCodexWriterPid(one), 101, "the last known mapping survives a failed scan");
   monitor._isProcessAlive = () => false;
   assert.equal(monitor._findCodexWriterPid(one), null);
+});
+
+test("macOS writer inventory runs off the main thread and de-duplicates in-flight scans", async () => {
+  const rollout = "/Users/test/rollout-async.jsonl";
+  const pending = [];
+  const monitor = new CodexLogMonitor({ logConfig: { sessionDir: "/tmp/sessions" } }, () => {}, {
+    platform: "darwin",
+    execFile(_file, _args, _options, callback) { pending.push(callback); },
+  });
+  monitor._isProcessAlive = (pid) => pid === 303;
+
+  // The lookup returns immediately from the (still empty) cache.
+  assert.equal(monitor._findCodexWriterPid(rollout), null);
+  assert.equal(monitor._findCodexWriterPid(rollout), null);
+  assert.equal(monitor._refreshWriterPidCache(), monitor._writerPidScanInFlight, "callers share the running scan");
+  assert.equal(pending.length, 1, "no second lsof while one is running");
+  assert.equal(monitor._writerPidScanValid, false);
+
+  pending[0](null, `p303\nn${rollout}\n`, "");
+  await monitor._writerPidScanInFlight;
+  assert.equal(monitor._writerPidScanInFlight, null);
+  assert.equal(monitor._findCodexWriterPid(rollout), 303);
+  assert.equal(pending.length, 1, "a fresh cache is reused for WRITER_PID_SCAN_INTERVAL_MS");
+
+  // lsof exits 1 with no output when no Codex process has a rollout open.
+  monitor._writerPidScanStartedAt = 0;
+  assert.equal(monitor._findCodexWriterPid(rollout), 303);
+  assert.equal(pending.length, 2);
+  pending[1](Object.assign(new Error("exit 1"), { code: 1 }), "", "");
+  await monitor._writerPidScanInFlight;
+  assert.equal(monitor._writerPidScanValid, true);
+  assert.equal(monitor._findCodexWriterPid(rollout), null);
 });
 
 test("closing a terminal clears its finished card immediately", () => {
