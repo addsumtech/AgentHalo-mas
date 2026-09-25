@@ -221,3 +221,66 @@ describe("sandbox-access", () => {
     }
   });
 });
+
+describe("sandbox-access lifetime scopes and tool environment", () => {
+  let userDataDir;
+
+  beforeEach(() => {
+    userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agenthalo-mas-scope-"));
+  });
+
+  afterEach(() => {
+    sandboxAccess.releaseAllAccess();
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  });
+
+  function scopedElectron(calls, { fail = false } = {}) {
+    return {
+      app: {
+        startAccessingSecurityScopedResource(bookmark) {
+          if (fail) throw new Error("bookmarkDataIsStale - try recreating the bookmark");
+          calls.push(`start:${bookmark}`);
+          return () => calls.push(`stop:${bookmark}`);
+        },
+      },
+    };
+  }
+
+  it("holds each authorized folder open once until released", () => {
+    const home = path.join(userDataDir, "home");
+    sandboxAccess.saveAuthorized("claude-code", path.join(home, ".claude"), "bm-claude", { userDataDir });
+    sandboxAccess.saveAuthorized("codex", path.join(home, ".codex"), "bm-codex", { userDataDir });
+    const calls = [];
+    const electron = scopedElectron(calls);
+    assert.equal(sandboxAccess.retainAllAuthorized({ userDataDir, electron }), 2);
+    assert.equal(sandboxAccess.retainAllAuthorized({ userDataDir, electron }), 2);
+    assert.deepEqual(calls.sort(), ["start:bm-claude", "start:bm-codex"]);
+    sandboxAccess.releaseAllAccess();
+    assert.deepEqual(calls.filter((c) => c.startsWith("stop:")).sort(), ["stop:bm-claude", "stop:bm-codex"]);
+  });
+
+  it("marks a bookmark that no longer resolves as stale and not authorized", () => {
+    const home = path.join(userDataDir, "home");
+    sandboxAccess.saveAuthorized("codex", path.join(home, ".codex"), "bm-old", { userDataDir });
+    assert.equal(sandboxAccess.retainAllAuthorized({ userDataDir, electron: scopedElectron([], { fail: true }) }), 0);
+    assert.equal(sandboxAccess.getAuthorized("codex", { userDataDir }).stale, true);
+    assert.equal(sandboxAccess.authorizedHomeDir("codex", { userDataDir }), null);
+    assert.equal(sandboxAccess.requireAuthorized("codex", { userDataDir }).reason, "stale-authorization");
+    assert.equal(sandboxAccess.listAuthorized({ userDataDir }).codex.stale, true);
+    sandboxAccess.retainAllAuthorized({ userDataDir, electron: scopedElectron([]) });
+    assert.equal(sandboxAccess.authorizedHomeDir("codex", { userDataDir }), home);
+  });
+
+  it("points CLAUDE_CONFIG_DIR and CODEX_HOME at authorized folders and undoes only its own values", () => {
+    const home = path.join(userDataDir, "home");
+    const env = { CODEX_HOME: "/custom/codex" };
+    sandboxAccess.saveAuthorized("claude-code", path.join(home, ".claude"), "bm", { userDataDir });
+    sandboxAccess.applyToolEnvironment(env, { userDataDir });
+    assert.equal(env.CLAUDE_CONFIG_DIR, path.join(home, ".claude"));
+    assert.equal(env.CODEX_HOME, "/custom/codex");
+    sandboxAccess.forgetAuthorized("claude-code", { userDataDir });
+    sandboxAccess.applyToolEnvironment(env, { userDataDir });
+    assert.equal(env.CLAUDE_CONFIG_DIR, undefined);
+    assert.equal(env.CODEX_HOME, "/custom/codex");
+  });
+});

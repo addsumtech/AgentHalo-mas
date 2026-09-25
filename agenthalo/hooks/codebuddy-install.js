@@ -134,7 +134,7 @@ function parsePermissionTargetArgv(argv) {
  * @returns {{ added: number, skipped: number, updated: number }}
  */
 function registerCodeBuddyHooks(options = {}) {
-  const settingsPath = options.settingsPath || path.join(os.homedir(), ".codebuddy", "settings.json");
+  const settingsPath = options.settingsPath || path.join(options.homeDir || os.homedir(), ".codebuddy", "settings.json");
 
   // Skip if ~/.codebuddy/ doesn't exist (CodeBuddy not installed)
   const codebuddyDir = path.dirname(settingsPath);
@@ -279,7 +279,7 @@ function registerCodeBuddyHooks(options = {}) {
 }
 
 function unregisterCodeBuddyHooks(options = {}) {
-  const settingsPath = options.settingsPath || path.join(os.homedir(), ".codebuddy", "settings.json");
+  const settingsPath = options.settingsPath || path.join(options.homeDir || os.homedir(), ".codebuddy", "settings.json");
 
   let settings = {};
   try {

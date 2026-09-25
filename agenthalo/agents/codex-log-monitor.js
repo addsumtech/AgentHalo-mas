@@ -217,8 +217,26 @@ class CodexLogMonitor {
     this._didInitialRecoveryScan = false;
   }
 
+  // Picks up a CODEX_HOME that changed while running (the store build sets it
+  // once the user authorizes ~/.codex).
+  _followCodexHome() {
+    if (this._codexDir || !this._config.logConfig.sessionDir.startsWith("~/.codex")) return;
+    const baseDir = this._resolveBaseDir();
+    if (baseDir === this._baseDir) return;
+    const followsArchived = this._archivedDir === path.join(path.dirname(this._baseDir), "archived_sessions");
+    this._baseDir = baseDir;
+    this._activeDayWalker = null;
+    if (followsArchived) this._archivedDir = path.join(path.dirname(baseDir), "archived_sessions");
+  }
+
   _resolveBaseDir() {
     const dir = this._config.logConfig.sessionDir;
+    // Codex keeps its sessions under $CODEX_HOME when that is set (the store
+    // build points it at the authorized ~/.codex).
+    const codexHome = typeof process.env.CODEX_HOME === "string" ? process.env.CODEX_HOME.trim() : "";
+    if (codexHome && dir.startsWith("~/.codex")) {
+      return path.join(codexHome, dir.slice("~/.codex".length));
+    }
     if (dir.startsWith("~")) {
       return path.join(os.homedir(), dir.slice(1));
     }
@@ -325,6 +343,7 @@ class CodexLogMonitor {
   }
 
   _poll() {
+    this._followCodexHome();
     this._refreshArchivedSessions();
     const context = {
       remainingAttempts: MAX_POLL_FILE_ATTEMPTS,

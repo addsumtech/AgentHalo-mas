@@ -299,7 +299,9 @@ function createIntegrationSyncRuntime(options = {}) {
     try {
       if (typeof ctx.syncCodexHooksImpl === "function") return ctx.syncCodexHooksImpl(options);
       const { registerCodexHooks } = require("../hooks/codex-install.js");
-      const result = registerCodexHooks({ silent: true, homeDir: options.homeDir });
+      // stableLauncher false: the store build must not write an executable
+      // launcher script into ~/.codex (App Review 2.4.5(ii)).
+      const result = registerCodexHooks({ silent: true, homeDir: options.homeDir, stableLauncher: false });
       if (hasPositiveCount(result.added) || hasPositiveCount(result.updated)) {
         console.log(`AgentHalo: synced Codex hooks (added ${result.added}, updated ${result.updated})`);
       }
@@ -319,6 +321,8 @@ function createIntegrationSyncRuntime(options = {}) {
       const { registerCodexHooks } = require("../hooks/codex-install.js");
       const { added, updated, configChanged, warnings } = registerCodexHooks({
         silent: true,
+        homeDir: options && options.homeDir,
+        stableLauncher: false,
         forceCodexHooksFeature: options && options.forceCodexHooksFeature === true,
       });
       if (added > 0 || updated > 0 || configChanged) {
@@ -625,7 +629,7 @@ function createIntegrationSyncRuntime(options = {}) {
     return !!(result && typeof result === "object" && result.status === "error");
   }
 
-  function runSandboxed(agentId, sync, options = {}) {
+  function runSandboxed(agentId, sync, options = {}, gateOptions = {}) {
     if (process.env.NODE_TEST_CONTEXT) {
       return sync(options);
     }
@@ -633,7 +637,7 @@ function createIntegrationSyncRuntime(options = {}) {
       return sync(options);
     }
     const gate = sandboxAccess.requireAuthorized(agentId, {
-      automatic: options.automatic,
+      automatic: gateOptions.automatic !== undefined ? gateOptions.automatic : options.automatic,
     });
     if (gate.status !== "ok") return gate;
     return sandboxAccess.withAccess(gate.record, () => sync({
@@ -693,7 +697,9 @@ function createIntegrationSyncRuntime(options = {}) {
     }
     const repair = AGENT_INTEGRATION_REPAIRERS[agentId];
     if (typeof repair !== "function") return false;
-    const result = repair(options);
+    // Doctor Fix writes the same folders as a sync, so it needs the same
+    // authorized home and folder access.
+    const result = runSandboxed(agentId, repair, options, { automatic: false });
     // Async installers are themselves structured results in flight. Returning
     // true here used to let Settings/Doctor commit success before DSH's
     // plugin mutation and post-verification had even settled.

@@ -68,7 +68,8 @@ function resolveCodewhaleConfigPath(options = {}) {
   if (typeof options.configPath === "string" && options.configPath.trim()) {
     return path.resolve(options.configPath);
   }
-  return envConfigPath(options) || CODEWHALE_CONFIG_PATH;
+  return envConfigPath(options)
+    || (options.homeDir ? path.join(options.homeDir, ".codewhale", "config.toml") : CODEWHALE_CONFIG_PATH);
 }
 
 function hasExplicitConfigPath(options = {}) {

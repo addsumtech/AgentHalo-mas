@@ -850,13 +850,24 @@ function registerSettingsIpc(options = {}) {
   handle("settings:detect-agent-installations", async (_ev, opts) => {
     try {
       const options = opts && typeof opts === "object" ? opts : {};
-      const detectorOptions = { fs, path, now, snapshot: settingsController.getSnapshot() };
+      // Sandboxed build: look in the real home, where authorized tool folders
+      // are reachable, and leave out integrations the store build hides.
+      const detectorOptions = {
+        fs,
+        path,
+        now,
+        snapshot: settingsController.getSnapshot(),
+        homeDir: require("./sandbox-access").realHomeDir(),
+      };
+      const storeOnly = (detection) => (detection && Array.isArray(detection.agents)
+        ? { ...detection, agents: require("./store-agent-roster").filterStoreAgents(detection.agents) }
+        : detection);
       if (options.refreshWsl) {
         const { refreshWslDetection } = require("./agent-installation-detector");
         await refreshWslDetection({ ...detectorOptions, skipDefaultIntegrations: false });
-        return detectAgentInstallations(detectorOptions);
+        return storeOnly(detectAgentInstallations(detectorOptions));
       }
-      return detectAgentInstallations(detectorOptions);
+      return storeOnly(detectAgentInstallations(detectorOptions));
     } catch (err) {
       console.warn("AgentHalo: settings:detect-agent-installations failed:", err && err.message);
       return {

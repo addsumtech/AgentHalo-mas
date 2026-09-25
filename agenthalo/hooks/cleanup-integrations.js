@@ -409,8 +409,12 @@ async function cleanupIntegrations(options = {}) {
   let agentsAffected = 0;
   let skipped = 0;
   let failed = 0;
+  // Optional allow-list: the sandboxed store build can only reach the tool
+  // folders the user authorized, so it cleans just those.
+  const onlyAgentIds = Array.isArray(options.agentIds) ? new Set(options.agentIds) : null;
 
   for (const agentId of MANAGED_AGENT_IDS) {
+    if (onlyAgentIds && !onlyAgentIds.has(agentId)) continue;
     const clean = AGENT_CLEANERS[agentId];
     const cleanOptions = plan.byAgent && plan.byAgent[agentId];
     const agent = {

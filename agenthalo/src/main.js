@@ -468,9 +468,14 @@ const _settingsController = createSettingsController({
     setOpenAtLogin: _writeSystemOpenAtLogin,
     startMonitorForAgent: (id) => agentRuntime && agentRuntime.startMonitorForAgent(id),
     stopMonitorForAgent: (id) => agentRuntime && agentRuntime.stopMonitorForAgent(id),
-    authorizeAgentConfigDir: (id, options) => {
+    authorizeAgentConfigDir: async (id, options) => {
+      if (!require("./store-agent-roster").isStoreAgent(id)) {
+        return { status: "error", reason: "not-in-store", message: "This integration is not available in the App Store version." };
+      }
       const sandboxAccess = require("./sandbox-access");
-      return sandboxAccess.authorize(id, { ...options, parentWindow: getSettingsWindow() });
+      const result = await sandboxAccess.authorize(id, { ...options, parentWindow: getSettingsWindow() });
+      if (result && result.status === "ok") sandboxAccess.applyToolEnvironment();
+      return result;
     },
     listAuthorizedConfigDirs: () => {
       const sandboxAccess = require("./sandbox-access");
@@ -498,7 +503,17 @@ const _settingsController = createSettingsController({
       // instead of unregistering Claude a second time outside the queue.
       const claudeCleanupResult = await _server.uninstallClaudeHooks({ source: "cleanup", automatic: false });
       const { cleanupIntegrations } = require("../hooks/cleanup-integrations.js");
-      return cleanupIntegrations({ ...options, backup: true, silent: true, claudeCleanupResult });
+      // Sandboxed build: only folders the user authorized are reachable, so
+      // clean those, at their real location rather than the app container.
+      const sandboxAccess = require("./sandbox-access");
+      return cleanupIntegrations({
+        ...options,
+        backup: true,
+        silent: true,
+        claudeCleanupResult,
+        homeDir: sandboxAccess.realHomeDir(),
+        agentIds: Object.keys(sandboxAccess.listAuthorized()),
+      });
     },
     repairLocalServer: () => _server && typeof _server.repairRuntimeStatus === "function"
       ? _server.repairRuntimeStatus()
@@ -786,6 +801,32 @@ const permissionAutomationConfirmationRuntime = createPermissionAutomationConfir
   path,
   iconPath: settingsWindowRuntime.getIconPath(),
 });
+
+// Store build: an integration only exists once its folder is authorized.
+// Fresh prefs mark Claude Code and Codex as installed, so clear the
+// installed/enabled flags of registry integrations that have no authorized
+// folder or that the store build hides. A stale bookmark keeps its flags so
+// Settings can ask for the folder again.
+function reconcileStoreAgentIntegrations() {
+  const agents = _settingsController.get("agents");
+  if (!agents || typeof agents !== "object") return;
+  const sandboxAccess = require("./sandbox-access");
+  const { isStoreAgent } = require("./store-agent-roster");
+  const next = { ...agents };
+  let changed = false;
+  for (const [agentId, entry] of Object.entries(agents)) {
+    if (!entry || typeof entry !== "object" || !getAgent(agentId)) continue;
+    if (entry.integrationInstalled !== true && entry.enabled !== true) continue;
+    if (isStoreAgent(agentId) && sandboxAccess.getAuthorized(agentId)) continue;
+    next[agentId] = { ...entry, integrationInstalled: false, enabled: false };
+    changed = true;
+  }
+  if (!changed) return;
+  const result = _settingsController.hydrate({ agents: next });
+  if (result && result.status === "error") {
+    console.warn("AgentHalo: store integration reconcile failed:", result.message);
+  }
+}
 
 function getSettingsWindow() {
   return settingsWindowRuntime.getWindow();
@@ -2531,8 +2572,10 @@ function getAgentOnboardingState() {
   const { INSTALLABLE_AGENT_IDS } = require("./settings-actions-agents");
   let detectionAgents = [];
   try {
-    const detection = detectAgentInstallations();
-    detectionAgents = Array.isArray(detection && detection.agents) ? detection.agents : [];
+    const detection = detectAgentInstallations({ homeDir: require("./sandbox-access").realHomeDir() });
+    detectionAgents = require("./store-agent-roster").filterStoreAgents(
+      Array.isArray(detection && detection.agents) ? detection.agents : []
+    );
   } catch (err) {
     console.warn("AgentHalo: tutorial agent detection failed:", err && err.message);
   }
@@ -3279,7 +3322,7 @@ const settingsIpcRuntime = registerSettingsIpc({
   getDoNotDisturb: () => doNotDisturb,
   getSoundMuted: () => soundMuted,
   getSoundVolume: () => soundVolume,
-  getAllAgents,
+  getAllAgents: () => require("./store-agent-roster").filterStoreAgents(getAllAgents()),
   getHookServerPort: () => getHookServerPort(),
   getRecentHookEvents: (options) => _server.getRecentHookEvents(options),
   kimiQuotaRuntime: _kimiQuotaRuntime,
@@ -3984,6 +4027,8 @@ if (!gotTheLock) {
     // Reopen every authorized tool folder for the life of the app before the
     // hook server starts its startup sync and the settings watcher.
     require("./sandbox-access").retainAllAuthorized();
+    require("./sandbox-access").applyToolEnvironment();
+    reconcileStoreAgentIntegrations();
     // Older macOS and development builds retain the padded runtime icon from
     // #416. Packaged Tahoe+ leaves the Dock untouched so macOS can apply the
     // user's Default/Dark/Clear/Tinted treatment to the bundle icon (#941).

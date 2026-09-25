@@ -574,11 +574,33 @@ async function authorizeAgentConfigDir(payload, deps = {}) {
         message: (result && result.message) || "Config folder not authorized",
       };
     }
+    // A connected tool whose folder was chosen again (moved folder, stale
+    // bookmark) gets its hooks rewritten there right away.
+    const snapshot = deps.snapshot || {};
+    const entry = snapshot.agents && snapshot.agents[agentId];
+    let synced = false;
+    if (
+      entry && entry.integrationInstalled === true && entry.enabled !== false
+      && typeof deps.syncIntegrationForAgent === "function"
+    ) {
+      try {
+        await deps.syncIntegrationForAgent(agentId, {
+          ...buildAgentIntegrationOptions(snapshot, agentId),
+          homeDir: result.homeDir,
+          source: "authorize",
+          automatic: false,
+        });
+        synced = true;
+      } catch (err) {
+        console.warn(`AgentHalo: sync after authorizing ${agentId} failed:`, err && err.message);
+      }
+    }
     return {
       status: "ok",
       path: result.path,
       homeDir: result.homeDir,
       reused: !!result.reused,
+      synced,
     };
   } catch (err) {
     return {

@@ -294,6 +294,31 @@ function authorizedHomeDir(agentId, options = {}) {
   return record && !record.stale ? record.homeDir : null;
 }
 
+// Claude Code and Codex honour a config-dir environment variable, and so do
+// AgentHalo's own readers for them (Codex titles and logs, Claude checks).
+// Pointing the variables at the authorized folders routes those readers out
+// of the container and into the folders the app can actually reach.
+const TOOL_ENV_VARS = Object.freeze({
+  "claude-code": "CLAUDE_CONFIG_DIR",
+  codex: "CODEX_HOME",
+});
+const appliedToolEnv = new Map();
+
+function applyToolEnvironment(env = process.env, options = {}) {
+  for (const [agentId, name] of Object.entries(TOOL_ENV_VARS)) {
+    const record = getAuthorized(agentId, options);
+    if (record && !record.stale) {
+      const value = path.join(record.homeDir, specFor(agentId).folder);
+      env[name] = value;
+      appliedToolEnv.set(name, value);
+    } else if (appliedToolEnv.has(name)) {
+      // Only undo values this module set; never clear a user's own setting.
+      if (env[name] === appliedToolEnv.get(name)) delete env[name];
+      appliedToolEnv.delete(name);
+    }
+  }
+}
+
 // Keeps the folder reachable until fn has finished, including async syncs
 // whose writes land after fn returns (Claude Code hooks go through a queue).
 function withAccess(record, fn, options = {}) {
@@ -393,6 +418,7 @@ module.exports = {
   retainAllAuthorized,
   releaseAllAccess,
   authorizedHomeDir,
+  applyToolEnvironment,
   authorize,
   requireAuthorized,
 };

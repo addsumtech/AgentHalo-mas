@@ -2219,7 +2219,9 @@
     text.className = "row-text";
     const label = document.createElement("span");
     label.className = "row-label";
-    const authorized = authorizedDirFor(agent.id);
+    // A stale bookmark (folder moved or recreated) needs choosing again.
+    const found = authorizedDirFor(agent.id);
+    const authorized = found && !found.stale ? found : null;
     label.textContent = authorized
       ? t("agentConfigDirAuthorized").replace("{path}", authorized.path)
       : t("agentConfigDirUnauthorized");

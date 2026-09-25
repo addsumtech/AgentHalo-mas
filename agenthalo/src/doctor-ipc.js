@@ -101,7 +101,7 @@ function registerDoctorIpc({
     (payload) => runConnectionTest({
       server,
       durationMs: payload && payload.durationMs,
-      homeDir: os.homedir(),
+      homeDir: require("./sandbox-access").realHomeDir(),
       resolveAgentDisplayName,
       getCodexHookHealth: () => getCodexHookHealth({ prefs: getPrefsSnapshot() }),
     }),
@@ -168,7 +168,7 @@ function registerDoctorIpc({
     const safePayload = normalizeDoctorOpenLogPayload(payload);
     return openClawdLog({
       requested: safePayload.name,
-      homeDir: os.homedir(),
+      homeDir: require("./sandbox-access").realHomeDir(),
       userDataDir: app.getPath("userData"),
       shell,
     });
