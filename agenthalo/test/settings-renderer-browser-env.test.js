@@ -4098,8 +4098,11 @@ describe("settings renderer browser environment", () => {
     const opened = [];
     const harness = loadAboutTabForTest({
       aboutInfo: {
-        repoUrl: "https://github.com/addsumtech/AgentHalo",
-        issuesUrl: "https://github.com/addsumtech/AgentHalo/issues",
+        repoUrl: "https://github.com/addsumtech/AgentHalo-mas",
+        repoLabel: "addsumtech / AgentHalo-mas",
+        issuesUrl: "https://github.com/addsumtech/AgentHalo-mas/issues",
+        licenseUrl: "https://github.com/addsumtech/AgentHalo-mas/blob/main/agenthalo/LICENSE",
+        license: "AGPL-3.0-only",
         upstreamUrl: "https://github.com/rullerzhou-afk/clawd-on-desk",
         updateCheckSnapshot: { state: "error", error: { code: "OLD_ERROR" } },
       },
@@ -4108,10 +4111,20 @@ describe("settings renderer browser environment", () => {
     await new Promise((resolve) => setImmediate(resolve));
     assert.match(collectText(harness.content), /AgentHalo/);
     assert.match(collectText(harness.content), /Clawd on Desk/);
+    assert.match(collectText(harness.content), /aboutManualUpdates/);
     const links = harness.content.querySelectorAll("a");
     const feedback = links.find((link) => link.textContent === "aboutFeedbackAction");
     feedback.dispatchEvent({ type: "click", preventDefault() {} });
-    assert.deepStrictEqual(opened, ["https://github.com/addsumtech/AgentHalo/issues"]);
+    // The store binary's AGPL source: repository, issues and license.
+    links.find((link) => link.textContent === "addsumtech / AgentHalo-mas")
+      .dispatchEvent({ type: "click", preventDefault() {} });
+    links.find((link) => link.textContent === "AGPL-3.0-only")
+      .dispatchEvent({ type: "click", preventDefault() {} });
+    assert.deepStrictEqual(opened, [
+      "https://github.com/addsumtech/AgentHalo-mas/issues",
+      "https://github.com/addsumtech/AgentHalo-mas",
+      "https://github.com/addsumtech/AgentHalo-mas/blob/main/agenthalo/LICENSE",
+    ]);
     assert.equal(harness.content.querySelector(".about-auto-update-switch"), null);
     assert.equal(harness.content.querySelector(".about-check-update-btn"), null);
     assert.equal(harness.content.querySelector(".about-update-error-card"), null);

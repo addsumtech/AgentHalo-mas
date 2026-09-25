@@ -1027,8 +1027,11 @@ test("settings IPC serves agent/about/update/external and remove-theme dialog he
     ]);
     assert.deepStrictEqual(await ipcMain.invoke("settings:get-about-info"), {
       version: "1.2.3",
-      repoUrl: "https://github.com/addsumtech/AgentHalo",
-      issuesUrl: "https://github.com/addsumtech/AgentHalo/issues",
+      // The store binary's AGPL source is AgentHalo-mas, not the full repo.
+      repoUrl: "https://github.com/addsumtech/AgentHalo-mas",
+      repoLabel: "addsumtech / AgentHalo-mas",
+      issuesUrl: "https://github.com/addsumtech/AgentHalo-mas/issues",
+      licenseUrl: "https://github.com/addsumtech/AgentHalo-mas/blob/main/agenthalo/LICENSE",
       upstreamUrl: "https://github.com/rullerzhou-afk/clawd-on-desk",
       license: "AGPL-3.0-only",
       copyright: "\u00a9 2026 Addsum",

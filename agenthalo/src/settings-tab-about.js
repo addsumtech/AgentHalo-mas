@@ -172,7 +172,10 @@
       if (!document.body.contains(parent)) return;
       const safe = info || {};
       infoSection.appendChild(linkRow(t("aboutVersionLabel"), null, "v" + (safe.version || "1.0.0")));
-      infoSection.appendChild(linkRow(t("aboutRepositoryLabel"), safe.repoUrl, "addsumtech / AgentHalo"));
+      // Repository, feedback and license point at the store binary's AGPL
+      // source (settings:get-about-info owns the URLs).
+      infoSection.appendChild(linkRow(t("aboutRepositoryLabel"), safe.repoUrl,
+        safe.repoLabel || safe.repoUrl || ""));
       infoSection.appendChild(linkRow(t("aboutFeedbackLabel"), safe.issuesUrl, t("aboutFeedbackAction")));
       infoSection.appendChild(linkRow(t("aboutPrivacyLabel"),
         t("aboutPrivacyUrl"), t("aboutPrivacyAction")));
@@ -185,8 +188,7 @@
           runtime.webBridgeStoreUrl, t("webBridgeAddToChrome")));
       }
       infoSection.appendChild(linkRow(t("aboutUpdateLabel"), null, t("aboutManualUpdates")));
-      infoSection.appendChild(linkRow(t("aboutLicenseLabel"),
-        "https://github.com/addsumtech/AgentHalo/blob/main/agenthalo/LICENSE",
+      infoSection.appendChild(linkRow(t("aboutLicenseLabel"), safe.licenseUrl,
         safe.license || "AGPL-3.0-only"));
       const thankYou = document.createElement("p");
       thankYou.textContent = t("aboutUpstreamThanks");
