@@ -54,12 +54,11 @@ describe("Remote SSH secure hook manifest", () => {
   // The relative-require closure test above cannot see bare requires, so
   // this allowlists Node builtins and rejects everything else (R8 P2).
   it("remote manifests require ONLY Node builtins; the family JSONC editor never ships", () => {
-    const { builtinModules } = require("node:module");
-    // Modules that are only requireable with the prefix (node:sqlite, node:test)
-    // are listed WITH it, so strip on both sides or they read as npm packages.
-    const builtinRoots = new Set(
-      builtinModules.map((name) => (name.startsWith("node:") ? name.slice(5) : name).split("/")[0])
-    );
+    // isBuiltin, not a builtinModules lookup: Node 22 leaves prefix-only
+    // modules (node:sqlite, node:test) out of builtinModules, so
+    // codex-thread-store's guarded require("node:sqlite") read as an npm
+    // package there while Node 24 lists it.
+    const { isBuiltin } = require("node:module");
 
     const manifests = new Set(parseDeployedFiles());
     for (const name of manifests) {
@@ -75,9 +74,8 @@ describe("Remote SSH secure hook manifest", () => {
       );
       for (const match of content.matchAll(/require\(["']([^."'][^"']*)["']\)/g)) {
         const spec = match[1];
-        const root = (spec.startsWith("node:") ? spec.slice(5) : spec).split("/")[0];
         assert.ok(
-          builtinRoots.has(root),
+          isBuiltin(spec),
           `hooks/${name} requires "${spec}" — remote hosts have no node_modules, only Node builtins are deployable`
         );
       }
