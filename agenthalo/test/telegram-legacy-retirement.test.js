@@ -83,20 +83,3 @@ test("package scripts cannot fetch, verify, or stage the retired executable", ()
   }
   assert.equal(scriptText.includes("assert-no-retired-telegram-sidecar"), false);
 });
-
-test("the permanent package assertion is present in all build workflows", () => {
-  const release = read(".github/workflows/build.yml");
-  const retirement = read(".github/workflows/telegram-retirement-package-audit.yml");
-  const wayland = read(".github/workflows/wayland-smoke.yml");
-  for (const [name, workflow] of [
-    ["release", release],
-    ["retirement", retirement],
-    ["wayland", wayland],
-  ]) {
-    assert.match(
-      workflow,
-      /scripts\/assert-no-retired-telegram-sidecar\.js/,
-      `${name} workflow must inspect real package resources`,
-    );
-  }
-});

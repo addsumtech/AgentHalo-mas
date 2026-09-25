@@ -517,6 +517,37 @@ describe("repository asset audit", () => {
     assert.ok(stableJson(value).endsWith("\n"));
   });
 
+  it("flags upstream-only files if the store package ever picks them up again", () => {
+    const root = path.resolve(__dirname, "..");
+    const output = fs.mkdtempSync(path.join(os.tmpdir(), "asset-audit-store-"));
+    try {
+      const { build } = require("../package.json");
+      const { report, manifest } = runAudit({
+        repoRoot: root,
+        output,
+        build: {
+          ...build,
+          files: [...build.files, "assets/svg/**/*", "extensions/**/*", "assets/accessories/cigarette.svg"],
+          extraResources: [{ from: "assets/icon.ico", to: "icon.ico" }],
+        },
+      });
+      const excluded = new Set(report.findings
+        .filter((finding) => finding.rule === "policy-excluded-file-not-packaged")
+        .map((finding) => finding.path));
+      for (const packagePath of [
+        "app/assets/svg/clawd-idle-follow.svg",
+        "app/extensions/vscode/extension.js",
+        "app/assets/accessories/cigarette.svg",
+        "resources/icon.ico",
+      ]) {
+        assert.ok(manifest.files.some((file) => file.packagePath === packagePath), packagePath);
+        assert.ok(excluded.has(packagePath), `${packagePath} should be flagged`);
+      }
+    } finally {
+      fs.rmSync(output, { recursive: true, force: true });
+    }
+  });
+
   it("audits the repository twice with byte-identical manifests and reports", () => {
     const root = path.resolve(__dirname, "..");
     const firstOutput = fs.mkdtempSync(path.join(os.tmpdir(), "asset-audit-first-"));
