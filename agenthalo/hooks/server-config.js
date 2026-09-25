@@ -1300,6 +1300,9 @@ function readNodeBinCacheEntry(key, options, validate) {
 
 function isNodeBinProbeNeeded(options, platform) {
   if (platform === "win32") return true;
+  // The store build always answers with the bundled launcher, which finds
+  // node at hook run time, so there is nothing to probe or remember.
+  if (shouldUseBundledNodeLauncher(options)) return false;
   const isElectron = options.isElectron !== undefined
     ? options.isElectron
     : !!process.versions.electron;

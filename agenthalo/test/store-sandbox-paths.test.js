@@ -102,6 +102,26 @@ describe("store build hook launcher", () => {
     assert.ok(settings.includes("node-launcher.sh"));
   });
 
+  it("keeps the launcher out of the per-process node memo", () => {
+    const { resolveNodeBin, getBundledNodeLauncherPath } = require("../hooks/server-config");
+    const options = {
+      platform: "darwin",
+      isElectron: true,
+      cache: true,
+      homeDir: path.join(root, "home"),
+      env: { PATH: `/memo-test-${path.basename(root)}` },
+      accessSync: (candidate) => {
+        if (candidate !== "/opt/homebrew/bin/node") throw new Error("missing");
+      },
+    };
+    process.mas = false;
+    assert.equal(resolveNodeBin(options), "/opt/homebrew/bin/node");
+    process.mas = true;
+    assert.equal(resolveNodeBin(options), getBundledNodeLauncherPath());
+    process.mas = false;
+    assert.equal(resolveNodeBin(options), "/opt/homebrew/bin/node");
+  });
+
   it("runs the hook script with node and passes stdin and arguments through", () => {
     const { execFileSync } = require("node:child_process");
     const { getBundledNodeLauncherPath } = require("../hooks/server-config");
