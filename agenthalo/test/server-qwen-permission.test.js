@@ -28,6 +28,10 @@ function makeReq(body) {
   const req = new EventEmitter();
   req.method = "POST";
   req.url = "/permission";
+  // A native hook's transport headers; the local server turns away anything
+  // else (src/server-request-guard.js).
+  req.headers = { host: "127.0.0.1:23333", "content-type": "application/json" };
+  req.rawHeaders = ["Host", "127.0.0.1:23333", "Content-Type", "application/json"];
   setImmediate(() => {
     req.emit("data", Buffer.from(JSON.stringify(body)));
     req.emit("end");

@@ -30,7 +30,10 @@ function makeReq(method, url, body, headers = {}) {
   const req = new EventEmitter();
   req.method = method;
   req.url = url;
-  req.headers = headers;
+  // A native hook's transport headers; the local server turns away anything
+  // else (src/server-request-guard.js).
+  req.headers = { host: "127.0.0.1:23333", "content-type": "application/json", ...headers };
+  req.rawHeaders = Object.entries(req.headers).flat();
   setImmediate(() => {
     if (body != null) req.emit("data", Buffer.from(body));
     req.emit("end");

@@ -50,6 +50,7 @@ const {
   shouldBypassFamilyBubble,
 } = require("./server-route-permission");
 const { createRemoteSshIngress } = require("./remote-ssh-ingress");
+const { inspectLocalRequest } = require("./server-request-guard");
 const {
   getCodexOfficialTurnKey,
   resolveCodexOfficialHookState,
@@ -763,6 +764,35 @@ function stopClaudeSettingsWatcher() {
   return claudeSettingsWatcher.stop();
 }
 
+const LOCAL_REQUEST_REJECT_LOG_INTERVAL_MS = 60 * 1000;
+const localRequestRejectLoggedAt = new Map();
+
+function logRejectedLocalRequest(reason, status) {
+    if (typeof ctx.debugLog !== "function") return;
+    // Reasons are a fixed set, so the map stays bounded; the interval keeps a
+    // page that loops requests from flooding the session log.
+    const now = nowFn();
+    const previous = localRequestRejectLoggedAt.get(reason);
+    if (Number.isFinite(previous) && now - previous < LOCAL_REQUEST_REJECT_LOG_INTERVAL_MS) return;
+    localRequestRejectLoggedAt.set(reason, now);
+    try {
+      ctx.debugLog(`local server rejected a request: status=${status} reason=${reason}`);
+    } catch {}
+}
+
+// See src/server-request-guard.js: browser pages and DNS-rebinding hosts are
+// turned away before any route reads the body. No x-clawd-server header on the
+// rejection, so a hook that somehow trips it moves on like it would for any
+// foreign server on the port.
+function rejectUntrustedLocalRequest(req, res) {
+    const rejection = inspectLocalRequest(req, { port: activeServerPort });
+    if (!rejection) return false;
+    logRejectedLocalRequest(rejection.reason, rejection.status);
+    res.writeHead(rejection.status, { "Content-Type": "text/plain; charset=utf-8", "Connection": "close" });
+    res.end(http.STATUS_CODES[rejection.status] || "rejected");
+    return true;
+}
+
 function routeHttpRequest(req, res, remoteProfile = null) {
     // Secure Remote SSH traffic must terminate at its profile-bound ingress,
     // never at the compatibility-oriented local main server. Rejecting the
@@ -776,6 +806,7 @@ function routeHttpRequest(req, res, remoteProfile = null) {
       res.end("not found");
       return;
     }
+    if (!remoteProfile && rejectUntrustedLocalRequest(req, res)) return;
     if (req.method === "GET" && req.url === "/state") {
       sendStateHealthResponse(res, { getHookServerPort });
     } else if (req.method === "GET" && (req.url === "/web-bridge" || req.url === "/web-bridge/")) {
