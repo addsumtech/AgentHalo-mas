@@ -1,24 +1,38 @@
 # Release Process
 
-## AgentHalo macOS releases
+## AgentHalo Mac App Store releases
 
-AgentHalo currently publishes macOS packages from local builds. The upstream
-cross-platform workflow below is retained as reference; it lives inside this
-application directory and does not run as a repository-root GitHub workflow.
+This repository ships only the Mac App Store package: one universal `mas`
+build, signed for the App Sandbox, uploaded to App Store Connect. The
+Developer ID (DMG/ZIP), Windows, Linux, WinGet and npm installer pipelines
+described further down belong to the upstream project and the full
+AgentHalo repository; their workflows and scripts are not part of this one.
+The repository-root `.github/workflows/ci.yml` runs `npm ci`, `npm test` and
+`npm run audit:assets` on macOS for every push and pull request.
 
-1. Keep the app's `package.json`, `package-lock.json`, and the sibling
-   `agenthalo-installer/package.json` on the same release version.
+1. Bump `version` in `package.json` and `package-lock.json`, and set the
+   matching build number in App Store Connect.
 2. Add `docs/releases/release-vX.Y.Z.md`.
-3. Run `npm run verify:release`, relevant tests, `npm test`, and `npm run audit:assets`.
-   Record any pre-existing failures separately from release regressions.
-4. Build both architectures with `electron-builder --mac dmg zip --arm64 --x64 --publish never`.
-5. Verify the exact ZIP and DMG contents, signatures, native architecture,
-   packaged Koffi calls, and SHA-256 values. Run the installer's
-   `scripts/sync-checksums.js` against these final ZIP files.
-6. Commit and push the source and version tag. Upload the four installers and
-   checksum file to a draft Release; compare uploaded hashes before publishing.
-7. Publish the matching npm installer only after the Release downloads work.
-   Verify both the public registry version and an installation from the public ZIP.
+3. Run `npm test`, `npm run audit:assets` and
+   `node scripts/audit-runtime-reachability.js --check`. Record any
+   pre-existing failures separately from release regressions.
+4. On a Mac with the "Apple Distribution" and "Mac Installer Distribution"
+   certificates in the login keychain and `build/embedded.provisionprofile`
+   in place, run `npm run build:mas`.
+5. Before uploading, build a development copy with an "Apple Development"
+   certificate and a development provisioning profile
+   (`npx electron-builder --mac mas-dev -c.masDev.provisioningProfile=<profile>`),
+   launch it, and check:
+   - the app starts (asar integrity and the Electron fuses hold for the
+     universal binary: `npx @electron/fuses read --app <path to AgentHalo.app>`);
+   - authorizing `~/.claude` and `~/.codex` from Settings → Agents works, hooks
+     are written there, and they survive a relaunch;
+   - a Claude Code or Codex task shows up, a permission bubble can be answered,
+     and clicking the task focuses the terminal;
+   - `codesign -d --entitlements - <app>` lists only the App Sandbox
+     entitlements in `build/entitlements.mas.plist`.
+6. Upload the `.pkg` with Transporter (or `xcrun altool`), then fill in the
+   listing, review notes and screenshots from `store/`.
 
 ### v1.0.4 Draft Smoke Checklist
 
@@ -65,7 +79,8 @@ application directory and does not run as a repository-root GitHub workflow.
 
 ## Upstream release process (reference)
 
-The following flow describes the upstream Clawd release infrastructure.
+The following flow describes the upstream Clawd release infrastructure. The
+workflows and scripts it names are not in this repository.
 
 ## Before Tagging
 
