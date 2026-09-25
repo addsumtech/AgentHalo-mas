@@ -99,8 +99,7 @@
       "category": "public.app-category.productivity",
       "extendInfo": {
         "LSUIElement": true,
-        "NSAppleEventsUsageDescription": "AgentHalo switches to the browser tab or terminal associated with the task you click.",
-        "NSDownloadsFolderUsageDescription": "AgentHalo only writes hooks after you choose a tool config folder."
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "files": [

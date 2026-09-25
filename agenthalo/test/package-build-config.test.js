@@ -40,6 +40,60 @@ function sliceWorkflowJob(workflow, jobName) {
     : normalized.slice(start, start + marker.length - 1 + nextJob);
 }
 
+function readPlistBooleans(relativePath) {
+  const xml = fs.readFileSync(path.join(ROOT, relativePath), "utf8");
+  const entries = {};
+  for (const match of xml.matchAll(/<key>([^<]+)<\/key>\s*<(true|false)\/>/g)) {
+    entries[match[1]] = match[2] === "true";
+  }
+  const keyCount = (xml.match(/<key>/g) || []).length;
+  assert.strictEqual(Object.keys(entries).length, keyCount, `${relativePath} should hold only boolean entitlements`);
+  return entries;
+}
+
+describe("Mac App Store configuration", () => {
+  it("signs with minimal App Sandbox entitlements", () => {
+    assert.strictEqual(pkg.build.mas.entitlements, "build/entitlements.mas.plist");
+    assert.strictEqual(pkg.build.mas.entitlementsInherit, "build/entitlements.mas.inherit.plist");
+    assert.deepStrictEqual(readPlistBooleans("build/entitlements.mas.plist"), {
+      "com.apple.security.app-sandbox": true,
+      // Agent hooks reach the local HTTP server, and the app checks the network.
+      "com.apple.security.network.client": true,
+      "com.apple.security.network.server": true,
+      // Tool config folders the user picks, remembered as security-scoped bookmarks.
+      "com.apple.security.files.user-selected.read-write": true,
+      "com.apple.security.files.bookmarks.app-scope": true,
+    });
+    assert.deepStrictEqual(readPlistBooleans("build/entitlements.mas.inherit.plist"), {
+      "com.apple.security.app-sandbox": true,
+      "com.apple.security.inherit": true,
+    });
+  });
+
+  it("does not request hardened-runtime or Apple Events exceptions the sandboxed build cannot use", () => {
+    assert.strictEqual(pkg.build.mas.hardenedRuntime, false);
+    const entitlements = readPlistBooleans("build/entitlements.mas.plist");
+    for (const key of [
+      "com.apple.security.cs.allow-jit",
+      "com.apple.security.cs.allow-unsigned-executable-memory",
+      "com.apple.security.cs.disable-library-validation",
+      "com.apple.security.automation.apple-events",
+      "com.apple.security.temporary-exception.apple-events",
+    ]) {
+      assert.strictEqual(entitlements[key], undefined, key);
+    }
+    assert.strictEqual(fs.existsSync(path.join(ROOT, "build", "entitlements.mac.plist")), false,
+      "the unused Developer ID entitlements file should not linger next to the MAS ones");
+  });
+
+  it("declares only the Info.plist keys the store build needs", () => {
+    assert.deepStrictEqual(pkg.build.mac.extendInfo, {
+      LSUIElement: true,
+      ITSAppUsesNonExemptEncryption: false,
+    });
+  });
+});
+
 describe("package build config", () => {
   describe("repository asset audit", () => {
     it("exposes a Windows-compatible npm audit command", () => {
