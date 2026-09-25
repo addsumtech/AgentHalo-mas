@@ -3856,6 +3856,13 @@ Object.defineProperties(this || {}, {}); // no-op placeholder
 // injected deps. main.js remains the composition root; theme-runtime owns the
 // active theme source and the cleanup/refresh/reload protocol.
 
+// ── Navigation guard ──
+// Installed before any window exists; see src/navigation-guard.js.
+require("./navigation-guard").installNavigationGuard(app, {
+  pagesDir: __dirname,
+  log: (msg) => console.warn(`AgentHalo: ${msg}`),
+});
+
 // ── Single instance lock ──
 app.on("open-url", (event, url) => {
   event.preventDefault();
