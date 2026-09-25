@@ -76,8 +76,7 @@
       {
         "name": "AgentHalo Import Protocol",
         "schemes": [
-          "agenthalo",
-          "clawd"
+          "agenthalo"
         ]
       }
     ],

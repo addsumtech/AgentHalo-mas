@@ -31,7 +31,7 @@ function parseClawdImportUrl(rawUrl) {
   } catch {
     throw new Error("invalid AgentHalo import URL");
   }
-  if (!["agenthalo:", "clawd:"].includes(parsed.protocol)) throw new Error("unsupported protocol");
+  if (parsed.protocol !== "agenthalo:") throw new Error("unsupported protocol");
 
   const action = parsed.hostname || parsed.pathname.replace(/^\/+/, "");
   if (action !== "import-pet") throw new Error(`unsupported AgentHalo action: ${action || "(missing)"}`);
