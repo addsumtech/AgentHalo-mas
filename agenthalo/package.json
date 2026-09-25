@@ -132,7 +132,6 @@
     ],
     "extraResources": [],
     "publish": [],
-    "afterPack": "scripts/after-pack-koffi.js",
     "mas": {
       "type": "distribution",
       "identity": "LI JIE (85BZU2K38Z)",
@@ -140,7 +139,10 @@
       "entitlements": "build/entitlements.mas.plist",
       "entitlementsInherit": "build/entitlements.mas.inherit.plist",
       "hardenedRuntime": false,
-      "artifactName": "AgentHalo-${version}-mas.${ext}"
+      "artifactName": "AgentHalo-${version}-mas.${ext}",
+      "files": [
+        "!**/node_modules/koffi{,/**/*}"
+      ]
     }
   },
   "engines": {

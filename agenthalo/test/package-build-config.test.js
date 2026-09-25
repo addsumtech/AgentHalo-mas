@@ -151,9 +151,26 @@ describe("package build config", () => {
   });
 
   describe("target-native Koffi packaging", () => {
-    it("pins the reviewed Koffi line and prunes only through the afterPack hook", () => {
+    it("pins the reviewed Koffi line but keeps it out of the universal MAS package", () => {
       assert.strictEqual(pkg.dependencies.koffi, "2.16.3");
-      assert.strictEqual(pkg.build.afterPack, "scripts/after-pack-koffi.js");
+      assert.strictEqual(pkg.build.afterPack, undefined);
+      const masTarget = pkg.build.mac.target.find((target) => target && target.target === "mas");
+      assert.deepStrictEqual(masTarget && masTarget.arch, ["universal"]);
+      // electron-builder applies exclusions from the merged mac + mas options to
+      // node_modules as well as app files.
+      const masExcludes = (pkg.build.mas.files || []).filter((glob) => glob.startsWith("!"));
+      for (const packaged of [
+        "node_modules/koffi",
+        "node_modules/koffi/package.json",
+        "node_modules/koffi/build/koffi/darwin_arm64/koffi.node",
+        "node_modules/koffi/build/koffi/darwin_x64/koffi.node",
+      ]) {
+        assert.ok(
+          masExcludes.some((glob) => minimatch(packaged, glob.slice(1))),
+          `${packaged} must be excluded from the MAS package`
+        );
+      }
+      assert.ok(!masExcludes.some((glob) => minimatch("node_modules/ws/index.js", glob.slice(1))));
       assert.strictEqual(pkg.scripts["audit:native-package"], "node scripts/audit-packaged-native.js");
       assert.strictEqual(pkg.scripts["verify:updater-metadata"], "node scripts/verify-updater-metadata.js");
     });
