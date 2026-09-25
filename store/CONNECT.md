@@ -144,7 +144,7 @@ Contact: addsumtech@gmail.com
 
 ## 截图清单
 
-Mac App Store 截图必须是 16:10，可用尺寸：1280×800、1440×900、2560×1600、2880×1800。每个语言 1–10 张。`store/screenshots/*.png` 是 2880×1800，由同名 HTML 以 1440×900 视口、deviceScaleFactor 2 渲染而成。
+Mac App Store 截图必须是 16:10，可用尺寸：1280×800、1440×900、2560×1600、2880×1800。每个语言 1–10 张。`store/screenshots/*.png` 是 2880×1800，由同名 HTML 以 1440×900 视口、deviceScaleFactor 2 渲染而成。HTML 用相对路径引用 `agenthalo/` 里的样式和素材，在任何检出目录都能直接渲染。01–03 是在 Mac 上用系统字体渲染的；04、05 是在 Linux 上用 Inter + Noto Sans SC 代替 SF / 苹方渲染的，观感接近。想要完全一致，就在 Mac 上把 04、05 重新渲染一次。
 
 只用商店版角色出镜（优先光环 / 孙悟空）：
 
