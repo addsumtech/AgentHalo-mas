@@ -122,7 +122,7 @@ Remote and messaging features are not included: Telegram, Feishu/Lark, Slack, Di
 
 CHARACTERS
 
-The built-in characters are 17 original companions drawn for AgentHalo, plus Sun Wukong from the 16th-century novel Journey to the West, in original artwork. No real people and no third-party characters are included. Users can import their own character packs; they stay in the app's container.
+The built-in characters are 17 original companions created for AgentHalo, plus Sun Wukong from the 16th-century novel Journey to the West, in original artwork. No real people and no third-party characters are included. Users can import their own character packs; they stay in the app's container.
 
 SOURCE CODE
 
