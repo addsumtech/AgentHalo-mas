@@ -8,7 +8,7 @@ const vm = require("node:vm");
 
 const PRELOAD_SETTINGS = path.join(__dirname, "..", "src", "preload-settings.js");
 
-function loadPreload() {
+function loadPreload({ argv = [] } = {}) {
   const ipcHandlers = new Map();
   const exposed = new Map();
   const invokes = [];
@@ -30,7 +30,7 @@ function loadPreload() {
   };
   const context = {
     console,
-    process: { argv: [] },
+    process: { argv },
     require(name) {
       if (name === "electron") return { contextBridge, ipcRenderer };
       throw new Error(`Unexpected preload dependency: ${name}`);
@@ -59,6 +59,19 @@ test("settings preload keeps every Feishu approver operation on the generic comm
     ["settings:command", { action: "feishuApproval.saveManualApprover", payload: { idType: "open_id", approverId: "ou_manual" } }],
   ]);
   assert.equal(typeof settingsAPI.feishuApprovalSaveApproverByEmail, "undefined");
+});
+
+test("settings preload exposes the Chrome Web Store listing only as an https URL", () => {
+  const storeUrl = "https://chromewebstore.google.com/detail/agenthalo-web-bridge/abcdefghijklmnopabcdefghijklmnop";
+  assert.equal(loadPreload().exposed.get("settingsAPI").webBridgeStoreUrl, "");
+  assert.equal(
+    loadPreload({ argv: [`--web-bridge-store-url=${storeUrl}`] }).exposed.get("settingsAPI").webBridgeStoreUrl,
+    storeUrl,
+  );
+  assert.equal(
+    loadPreload({ argv: ["--web-bridge-store-url=javascript:alert(1)"] }).exposed.get("settingsAPI").webBridgeStoreUrl,
+    "",
+  );
 });
 
 test("settings preload exposes the three roam area operations", async () => {

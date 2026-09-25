@@ -6,6 +6,8 @@
 //
 //   discordDefaultAppIdPresent          boolean — a default Discord App ID is
 //                                       hardcoded (maintainer-shipped)
+//   webBridgeStoreUrl                   string — Chrome Web Store listing for the
+//                                       browser extension; "" hides its UI
 //   getSnapshot()                       Promise<snapshot>
 //   getPetTintOptions()                 Promise<Array<{id, labelKey}>>
 //   getPetAccessoryOptions()            Promise<Array<{id, labelKey}>>
@@ -39,6 +41,12 @@ const DISCORD_DEFAULT_APP_ID_FLAG = "--discord-default-app-id-present=";
 const discordDefaultAppIdArg = process.argv.find((a) => a.startsWith(DISCORD_DEFAULT_APP_ID_FLAG));
 const discordDefaultAppIdPresent =
   !!discordDefaultAppIdArg && discordDefaultAppIdArg.slice(DISCORD_DEFAULT_APP_ID_FLAG.length) === "1";
+// The Chrome Web Store listing URL rides the same channel (web-bridge-install.js
+// owns the value). Anything but an https URL leaves the browser-extension UI hidden.
+const WEB_BRIDGE_STORE_URL_FLAG = "--web-bridge-store-url=";
+const webBridgeStoreUrlArg = process.argv.find((a) => a.startsWith(WEB_BRIDGE_STORE_URL_FLAG));
+const webBridgeStoreUrlValue = webBridgeStoreUrlArg ? webBridgeStoreUrlArg.slice(WEB_BRIDGE_STORE_URL_FLAG.length) : "";
+const webBridgeStoreUrl = /^https:\/\/\S+$/i.test(webBridgeStoreUrlValue) ? webBridgeStoreUrlValue : "";
 
 const listeners = new Set();
 const shortcutFailureListeners = new Set();
@@ -117,6 +125,8 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   // Capability flag: true when a default Discord App ID is hardcoded (maintainer-
   // shipped), so the presence enable switch can be ready without a user-saved App ID.
   discordDefaultAppIdPresent,
+  // Empty until the browser extension is listed on the Chrome Web Store.
+  webBridgeStoreUrl,
   checkWebBridgeStatus: () => ipcRenderer.invoke("settings:check-web-bridge"),
   getSnapshot: () => ipcRenderer.invoke("settings:get-snapshot"),
   queryRecap: (period) => ipcRenderer.invoke("settings:recap-query", period),

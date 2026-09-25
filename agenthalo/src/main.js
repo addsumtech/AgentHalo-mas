@@ -3971,11 +3971,8 @@ if (!gotTheLock) {
     createWindow();
     try { recapRuntime.start(); }
     catch (err) { console.warn("AgentHalo: local recap startup failed:", err && err.code ? err.code : "storage-error"); }
-    // Registering the web sites up front is what lets a Chrome Web Store install
-    // resolve its agent ids from GET /web-bridge without any Settings visit.
-    void _settingsController.applyCommand("ensureWebBridge").catch((err) => {
-      console.warn("AgentHalo: web bridge registration failed:", err && err.message);
-    });
+    // The Web Bridge sites are registered only when the user adds the browser
+    // extension from Settings -> Agents; nothing is written at launch.
     if (!_settingsController.get("tutorialSeen") && tutorialRuntime) {
       try { tutorialRuntime.open(); }
       catch (err) { console.warn("AgentHalo: tutorial open failed:", err && err.message); }

@@ -544,12 +544,15 @@ describe("i18n locales", () => {
 });
 
 
-describe("public extension download", () => {
-  it("links every locale directly to the published extension archive", () => {
+describe("browser extension in the store build", () => {
+  it("keeps the Chrome Web Store strings but no unpacked-download link in any locale", () => {
     const strings = loadSettingsI18nStrings();
     for (const lang of SUPPORTED_LANGS) {
-      assert.strictEqual(strings[lang].webBridgeDownloadUrl,
-        "https://github.com/addsumtech/AgentHalo/releases/download/web-bridge-v0.3.3/AgentHalo-Web-Bridge.zip");
+      assert.strictEqual(strings[lang].webBridgeDownloadUrl, undefined, `${lang}.webBridgeDownloadUrl`);
+      assert.strictEqual(strings[lang].webBridgeStepLoad, undefined, `${lang}.webBridgeStepLoad`);
+      for (const key of ["webBridgeLabel", "webBridgeTitle", "webBridgeAddToChrome", "webBridgeStoreHint"]) {
+        assert.ok(strings[lang][key], `${lang}.${key}`);
+      }
     }
   });
 });

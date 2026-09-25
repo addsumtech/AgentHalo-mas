@@ -3,6 +3,7 @@
 (function initSettingsTabAbout(root) {
   let helpers = null;
   let ops = null;
+  let runtime = null;
   const t = (key) => helpers.t(key);
 
   function linkRow(label, url, text) {
@@ -178,8 +179,11 @@
       infoSection.appendChild(linkRow(t("aboutSupportLabel"),
         t("aboutSupportUrl"), t("aboutSupportAction")));
       infoSection.appendChild(tutorialRow());
-      infoSection.appendChild(linkRow(t("webBridgeLabel"),
-        t("webBridgeDownloadUrl"), t("webBridgeDownload")));
+      // Offered only through the Chrome Web Store (see settings-tab-agents.js).
+      if (runtime && runtime.webBridgeStoreUrl) {
+        infoSection.appendChild(linkRow(t("webBridgeLabel"),
+          runtime.webBridgeStoreUrl, t("webBridgeAddToChrome")));
+      }
       infoSection.appendChild(linkRow(t("aboutUpdateLabel"), null, t("aboutManualUpdates")));
       infoSection.appendChild(linkRow(t("aboutLicenseLabel"),
         "https://github.com/addsumtech/AgentHalo/blob/main/agenthalo/LICENSE",
@@ -200,6 +204,7 @@
   function init(core) {
     helpers = core.helpers;
     ops = core.ops;
+    runtime = core.runtime || null;
     core.tabs.about = { render };
   }
 

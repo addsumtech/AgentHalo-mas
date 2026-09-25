@@ -315,6 +315,30 @@ test("settings window injects the Discord default-App-ID flag into the sandboxed
   );
 });
 
+test("settings window passes a configured Chrome Web Store listing to the preload", () => {
+  // web-bridge-install.js CHROME_WEB_STORE_URL is empty in the store build, so
+  // the default adds nothing and the renderer hides the browser-extension UI.
+  const unset = createRuntime();
+  unset.runtime.open();
+  assert.ok(!FakeBrowserWindow.instances[0].options.webPreferences.additionalArguments
+    .some((arg) => arg.startsWith("--web-bridge-store-url=")));
+
+  const storeUrl = "https://chromewebstore.google.com/detail/agenthalo-web-bridge/abcdefghijklmnopabcdefghijklmnop";
+  const listed = createRuntime({ runtime: { webBridgeStoreUrl: storeUrl } });
+  listed.runtime.open();
+  assert.deepStrictEqual(
+    FakeBrowserWindow.instances[0].options.webPreferences.additionalArguments,
+    ["--discord-default-app-id-present=0", `--web-bridge-store-url=${storeUrl}`],
+  );
+
+  const insecure = createRuntime({ runtime: { webBridgeStoreUrl: "http://example.test/ext.zip" } });
+  insecure.runtime.open();
+  assert.deepStrictEqual(
+    FakeBrowserWindow.instances[0].options.webPreferences.additionalArguments,
+    ["--discord-default-app-id-present=0"],
+  );
+});
+
 test("settings window runtime reuses an existing non-destroyed Settings window", () => {
   const { runtime, timers } = createRuntime();
   runtime.open();

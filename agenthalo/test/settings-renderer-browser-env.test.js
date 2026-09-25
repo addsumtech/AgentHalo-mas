@@ -2372,6 +2372,7 @@ function loadAboutTabForTest({
   checkForUpdates = () => Promise.resolve({ state: "up-to-date", version: "1.0.0" }),
   clearUpdateError = () => Promise.resolve({ state: "idle" }),
   writeClipboard = () => Promise.resolve(),
+  webBridgeStoreUrl = "",
 } = {}) {
   const body = new FakeElement("body");
   const content = new FakeElement("main");
@@ -2424,7 +2425,10 @@ function loadAboutTabForTest({
       activeTab: "about",
       mountedControls: { aboutAutoUpdate: null, aboutUpdateStatus: null },
     },
-    runtime: { about: { infoCache: null, clickCount: 0, updateCheckSnapshot: { state: "idle" } } },
+    runtime: {
+      webBridgeStoreUrl,
+      about: { infoCache: null, clickCount: 0, updateCheckSnapshot: { state: "idle" } },
+    },
     helpers: {
       t: (key) => key,
       attachSettingsDisclosure: attachDisclosureForHarness,
@@ -4112,6 +4116,21 @@ describe("settings renderer browser environment", () => {
     assert.equal(harness.content.querySelector(".about-check-update-btn"), null);
     assert.equal(harness.content.querySelector(".about-update-error-card"), null);
     assert.deepStrictEqual(harness.updateCalls, []);
+  });
+
+  it("lists the browser extension in About only when a Chrome Web Store listing is configured", async () => {
+    const hidden = loadAboutTabForTest();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.doesNotMatch(collectText(hidden.content), /webBridgeLabel|webBridgeDownload/);
+
+    const storeUrl = "https://chromewebstore.google.com/detail/agenthalo-web-bridge/abcdefghijklmnopabcdefghijklmnop";
+    const opened = [];
+    const listed = loadAboutTabForTest({ webBridgeStoreUrl: storeUrl, openExternalSafe: (url) => opened.push(url) });
+    await new Promise((resolve) => setImmediate(resolve));
+    const link = listed.content.querySelectorAll("a").find((node) => node.textContent === "webBridgeAddToChrome");
+    assert.ok(link, "About should offer the store listing");
+    link.dispatchEvent({ type: "click", preventDefault() {} });
+    assert.deepStrictEqual(opened, [storeUrl]);
   });
 
   it("keeps every Telegram retirement gate string in all supported languages", () => {
@@ -16281,87 +16300,86 @@ describe("macOS platform detection (Settings shortcut labels)", () => {
 
 
 describe("browser extension setup", () => {
+  // The store build offers the browser extension only through the Chrome Web
+  // Store. web-bridge-install.js CHROME_WEB_STORE_URL stays empty until that
+  // listing is public, and the preload passes it through as webBridgeStoreUrl.
+  const STORE_URL = "https://chromewebstore.google.com/detail/agenthalo-web-bridge/abcdefghijklmnopabcdefghijklmnop";
+
   function render(settingsAPI = {}) {
     const harness = loadAgentsTabForTest({ settingsAPI });
     harness.core.ops.requestRender({ content: true });
     return harness;
   }
 
-  it("opens guidance without preparing files and downloads the public ZIP directly", async () => {
+  it("shows no card, registers nothing, and links nowhere until a store listing is configured", () => {
     const calls = [];
     const harness = render({
-      command: (...args) => { calls.push(args); return Promise.resolve({ status: "ok" }); },
-      openExternal: (url) => { calls.push(url); return Promise.resolve(); },
+      command: (name) => { calls.push(name); return Promise.resolve({ status: "ok" }); },
+      openExternal: (url) => { calls.push(url); return Promise.resolve({ status: "ok" }); },
+      checkWebBridgeStatus: () => { calls.push("check"); return Promise.resolve({ installations: [] }); },
     });
-    const setup = harness.content.querySelector(".web-bridge-setup");
-    assert.strictEqual(setup.getAttribute("aria-hidden"), "true");
-    harness.content.querySelector(".web-bridge-install").click();
-    assert.strictEqual(setup.getAttribute("aria-hidden"), "false");
-    assert.strictEqual(harness.content.querySelector(".web-bridge-install").getAttribute("aria-expanded"), "true");
-    assert.deepStrictEqual(calls, []);
-    await harness.content.querySelector(".web-bridge-download").eventListeners.click[0]({ preventDefault() {} });
-    assert.deepStrictEqual(calls, ["https://github.com/addsumtech/AgentHalo/releases/download/web-bridge-v0.3.3/AgentHalo-Web-Bridge.zip"]);
+    assert.strictEqual(harness.core.runtime.webBridgeStoreUrl, "");
+    assert.strictEqual(harness.content.querySelector(".web-bridge-card"), null);
+    assert.strictEqual(harness.content.querySelector(".web-bridge-install"), null);
+    assert.doesNotMatch(collectText(harness.content), /Browser extension|Add to Chrome/);
+    assert.ok(calls.every((call) => call === "listAuthorizedConfigDirs" || call === "detectAgentInstallations"),
+      `unexpected web bridge calls: ${calls.join(", ")}`);
   });
 
-  it("prepares before opening the chosen browser and survives a preference rerender", async () => {
+  it("ignores a store URL that is not https", () => {
+    const harness = render({ webBridgeStoreUrl: "http://example.test/extension.zip" });
+    assert.strictEqual(harness.core.runtime.webBridgeStoreUrl, "");
+    assert.strictEqual(harness.content.querySelector(".web-bridge-card"), null);
+  });
+
+  it("offers only the Chrome Web Store listing, registering the websites before opening it", async () => {
     const calls = [];
-    const pending = createDeferred();
-    const harness = render({ command: (name, payload) => {
-      calls.push({ name, payload });
-      return name === "prepareWebBridge" ? pending.promise
-        : Promise.resolve({ status: "ok", pathCopied: true, opened: true });
-    } });
-    harness.content.querySelector(".web-bridge-install").click();
-    const browser = harness.content.querySelector(".web-bridge-browser");
-    browser.value = "edge";
-    browser.dispatchEvent({ type: "change" });
-    const action = harness.content.querySelector(".web-bridge-prepare").eventListeners.click[0]();
-    harness.core.ops.requestRender({ content: true });
-    assert.strictEqual(harness.content.querySelector(".web-bridge-prepare").disabled, true);
-    assert.strictEqual(harness.content.querySelector(".web-bridge-setup").getAttribute("aria-hidden"), "false");
-    assert.strictEqual(harness.content.querySelector(".web-bridge-browser").value, "edge");
-    assert.deepStrictEqual(calls.map((call) => call.name), ["prepareWebBridge"]);
-    pending.resolve({ status: "ok", installDir: "/test/extension" });
-    await action;
-    assert.deepStrictEqual(calls.map((call) => call.name), ["prepareWebBridge", "revealWebBridge"]);
-    assert.strictEqual(calls[1].payload.browser, "edge");
-    assert.strictEqual(harness.content.querySelector(".web-bridge-path").textContent, "/test/extension");
-    assert.match(collectText(harness.content.querySelector(".web-bridge-status")), /path copied/);
-    assert.strictEqual(harness.content.querySelector(".web-bridge-connection"), null);
+    const harness = render({
+      webBridgeStoreUrl: STORE_URL,
+      command: (name) => { calls.push(name); return Promise.resolve({ status: "ok" }); },
+      openExternal: (url) => { calls.push(url); return Promise.resolve({ status: "ok" }); },
+    });
+    const card = harness.content.querySelector(".web-bridge-card");
+    assert.ok(card);
+    // No unpacked install path and no download outside the Chrome Web Store.
+    assert.strictEqual(card.querySelector(".web-bridge-download"), null);
+    assert.strictEqual(card.querySelector(".web-bridge-setup"), null);
+    assert.strictEqual(card.querySelector(".web-bridge-prepare"), null);
+    assert.strictEqual(card.querySelectorAll("a").length, 0);
+    assert.deepStrictEqual(calls.filter((call) => call !== "listAuthorizedConfigDirs"), []);
+
+    const install = card.querySelector(".web-bridge-install");
+    assert.strictEqual(install.textContent, "Add to Chrome");
+    await install.eventListeners.click[0]();
+    assert.deepStrictEqual(calls.filter((call) => call !== "listAuthorizedConfigDirs"), ["ensureWebBridge", STORE_URL]);
+    assert.match(collectText(harness.content.querySelector(".web-bridge-status")), /Chrome Web Store opens in your browser/);
+    assert.strictEqual(install.disabled, false);
   });
 
-  it("shows manual recovery when opening or copying fails, without claiming success", async () => {
-    const harness = render({ command: (name) => Promise.resolve(name === "prepareWebBridge"
-      ? { status: "ok", installDir: "/test/extension" }
-      : { status: "ok", pathCopied: false, opened: false }) });
-    await harness.content.querySelector(".web-bridge-prepare").eventListeners.click[0]();
-    const message = collectText(harness.content.querySelector(".web-bridge-status"));
-    assert.match(message, /Copy the folder path below manually/);
-    assert.match(message, /chrome:\/\/extensions/);
-    assert.doesNotMatch(message, /path copied/);
-  });
-
-  it("does not open the browser after preparation fails", async () => {
-    const calls = [];
-    const harness = render({ command: (name) => {
-      calls.push(name);
-      return Promise.resolve({ status: "error" });
-    } });
-    await harness.content.querySelector(".web-bridge-prepare").eventListeners.click[0]();
-    assert.deepStrictEqual(calls, ["prepareWebBridge"]);
-    assert.match(collectText(harness.content.querySelector(".web-bridge-status")), /Could not prepare/);
-    assert.strictEqual(harness.content.querySelector(".web-bridge-prepare").disabled, false);
+  it("does not open the store when the websites could not be registered", async () => {
+    const opened = [];
+    const harness = render({
+      webBridgeStoreUrl: STORE_URL,
+      command: () => Promise.resolve({ status: "error" }),
+      openExternal: (url) => { opened.push(url); return Promise.resolve({ status: "ok" }); },
+    });
+    await harness.content.querySelector(".web-bridge-install").eventListeners.click[0]();
+    assert.deepStrictEqual(opened, []);
+    assert.match(collectText(harness.content.querySelector(".web-bridge-status")), /Could not open the link/);
   });
 
   it("checks only on request, keeps diagnostics collapsed, and distinguishes loaded from connected", async () => {
     let checks = 0;
-    const harness = render({ checkWebBridgeStatus: () => {
-      checks++;
-      return Promise.resolve({
-        connection: "browser", latestVersion: "0.3.3", installDir: "/test/extension",
-        installations: [{ browser: "Chrome", profile: "Default", status: "installed", version: "0.3.3" }],
-      });
-    } });
+    const harness = render({
+      webBridgeStoreUrl: STORE_URL,
+      checkWebBridgeStatus: () => {
+        checks++;
+        return Promise.resolve({
+          connection: "browser", latestVersion: "0.3.3", installDir: "/test/extension", storeUrl: "",
+          installations: [{ browser: "Chrome", profile: "Default", status: "installed", version: "0.3.3" }],
+        });
+      },
+    });
     assert.strictEqual(checks, 0);
     await harness.content.querySelector(".web-bridge-check").eventListeners.click[0]();
     assert.strictEqual(checks, 1);
@@ -16371,7 +16389,20 @@ describe("browser extension setup", () => {
     assert.match(collectText(details), /Chrome.*0.3.3/);
     harness.core.ops.requestRender({ content: true });
     assert.strictEqual(checks, 1);
+    // A report cannot switch the card off (or point it elsewhere) once shown.
+    assert.strictEqual(harness.core.runtime.webBridgeStoreUrl, STORE_URL);
     assert.ok(harness.content.querySelector(".web-bridge-connection"));
+  });
+
+  it("keeps no web bridge download link in any locale", () => {
+    const strings = loadSettingsI18nForTest();
+    for (const [lang, table] of Object.entries(strings)) {
+      assert.strictEqual(table.webBridgeDownloadUrl, undefined, `${lang} still has webBridgeDownloadUrl`);
+      for (const [key, value] of Object.entries(table)) {
+        if (typeof value !== "string") continue;
+        assert.doesNotMatch(value, /\/releases\/download\/|AgentHalo-Web-Bridge\.zip/, `${lang}.${key}`);
+      }
+    }
   });
 });
 

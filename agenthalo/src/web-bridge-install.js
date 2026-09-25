@@ -23,8 +23,10 @@ const EXTENSION_FILES = Object.freeze([
 ]);
 
 const WEB_BRIDGE_PORTS = Object.freeze([23333, 23334, 23335, 23336, 23337]);
-// Filled when the Chrome Web Store listing is public. Empty keeps the current
-// in-app unpacked path; capability is the same either way.
+// The one switch for the browser extension in the store build. Empty until the
+// Chrome Web Store listing is public: Settings hides the Web Bridge card and the
+// About row, and nothing is registered or written for it. Set the public listing
+// URL (https://chromewebstore.google.com/detail/...) to offer "Add to Chrome".
 const CHROME_WEB_STORE_URL = "";
 
 function chromeWebStoreUrl() {
