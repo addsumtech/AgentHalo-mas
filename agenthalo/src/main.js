@@ -3287,7 +3287,6 @@ const settingsIpcRuntime = registerSettingsIpc({
     clipboard.writeText(copyText);
     return { status: "ok" };
   },
-  aboutHeroSvgPath: path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg"),
   getLanWsServer: () => _lanWss,
 });
 

@@ -99,10 +99,6 @@ describe("package build config", () => {
 
   it("unpacks built-in theme assets so the folder can be opened from settings", () => {
     assert.ok(
-      pkg.build.asarUnpack.includes("assets/svg/**/*"),
-      "asarUnpack should include assets/svg/**/*"
-    );
-    assert.ok(
       pkg.build.files.includes("assets/accessories/**/*"),
       "build.files should include assets/accessories/**/*"
     );
@@ -114,6 +110,15 @@ describe("package build config", () => {
       pkg.build.asarUnpack.includes("themes/**/*"),
       "asarUnpack should include themes/**/*"
     );
+  });
+
+  it("keeps the upstream Clawd artwork out of the store package", () => {
+    // assets/svg is Anthropic's Clawd character (fan art; assets/LICENSE forbids
+    // commercial use). Built-in store themes ship their own assets.
+    for (const file of ["assets/svg/clawd-idle-follow.svg", "assets/svg/clawd-about-hero.svg"]) {
+      assert.strictEqual(matchedByAnyGlob(pkg.build.files, file), false, `${file} must not be packaged`);
+      assert.strictEqual(matchedByAnyGlob(pkg.build.asarUnpack, file), false, `${file} must not be unpacked`);
+    }
   });
 
   it("ships and unpacks runtime files required by external hook scripts", () => {

@@ -252,7 +252,6 @@ function createHarness(overrides = {}) {
       calls.push(["showTutorial"]);
       return { status: "ok" };
     }),
-    aboutHeroSvgPath: overrides.aboutHeroSvgPath || path.join(__dirname, "missing-about-hero.svg"),
     getLanWsServer: overrides.getLanWsServer || (() => null),
     now: overrides.now || (() => 12345),
     saveFeishuApproverByEmail: overrides.saveFeishuApproverByEmail || (async ({ email, signal }) => {
@@ -927,12 +926,9 @@ test("settings IPC previews sound only when not muted or in DND", async () => {
 test("settings IPC serves agent/about/update/external and remove-theme dialog helpers", async () => {
   const root = makeTempDir();
   try {
-    const heroSvgPath = path.join(root, "hero.svg");
-    fs.writeFileSync(heroSvgPath, "<svg id=\"hero\"></svg>", "utf8");
     let messageBoxParent = null;
     let messageBoxOptions = null;
     const { ipcMain, calls, settingsWindow } = createHarness({
-      aboutHeroSvgPath: heroSvgPath,
       getLang: () => "en",
       dialog: {
         showOpenDialog: async () => ({ canceled: true }),

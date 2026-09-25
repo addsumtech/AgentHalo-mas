@@ -110,7 +110,6 @@
       "assets/icon.png",
       "assets/icons/**/*",
       "assets/icons/agents/**/*",
-      "assets/svg/**/*",
       "assets/accessories/**/*",
       "assets/sounds/**/*",
       "assets/dock-icon.png",
@@ -121,7 +120,6 @@
       "pwa/**/*"
     ],
     "asarUnpack": [
-      "assets/svg/**/*",
       "assets/accessories/**/*",
       "hooks/**/*",
       "agents/**/*",

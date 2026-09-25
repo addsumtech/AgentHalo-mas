@@ -17,26 +17,19 @@ function fileUrl(absPath) {
   try { return pathToFileURL(absPath).href; } catch { return null; }
 }
 
-function buildPreviewUrl(raw, themeDir, isBuiltin, options = {}) {
-  const assetsSvgDir = options.assetsSvgDir || null;
+// Previews resolve inside the theme's own assets folder only; built-in themes
+// no longer share a central artwork folder.
+function buildPreviewUrl(raw, themeDir, _isBuiltin, _options = {}) {
   const previewFile = (typeof raw.preview === "string" && raw.preview)
     || getStateFiles(raw.states && raw.states.idle)[0]
     || null;
   if (!previewFile) return null;
   const filename = path.basename(previewFile);
-  let absPath = null;
   const themeLocal = path.join(themeDir, "assets", filename);
-  if (fs.existsSync(themeLocal)) {
-    absPath = themeLocal;
-  } else if (isBuiltin && assetsSvgDir) {
-    const central = path.join(assetsSvgDir, filename);
-    if (fs.existsSync(central)) absPath = central;
-  }
-  return absPath ? fileUrl(absPath) : null;
+  return fs.existsSync(themeLocal) ? fileUrl(themeLocal) : null;
 }
 
 function buildVariantPreviewUrl(raw, variantSpec, themeDir, isBuiltin, options = {}) {
-  const assetsSvgDir = options.assetsSvgDir || null;
   let previewFile = null;
   if (variantSpec) {
     if (typeof variantSpec.preview === "string" && variantSpec.preview) {
@@ -51,10 +44,6 @@ function buildVariantPreviewUrl(raw, variantSpec, themeDir, isBuiltin, options =
     const filename = path.basename(previewFile);
     const themeLocal = path.join(themeDir, "assets", filename);
     if (fs.existsSync(themeLocal)) return fileUrl(themeLocal);
-    if (isBuiltin && assetsSvgDir) {
-      const central = path.join(assetsSvgDir, filename);
-      if (fs.existsSync(central)) return fileUrl(central);
-    }
   }
   return buildPreviewUrl(raw, themeDir, isBuiltin, options);
 }

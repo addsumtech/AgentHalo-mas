@@ -16,7 +16,7 @@ afterEach(() => {
 //   <tmp>/src/           (appDir)
 //   <tmp>/themes/<id>/theme.json
 //   <tmp>/themes/<id>/assets/<files>
-//   <tmp>/assets/svg/    (referenced by init for built-in svgs)
+//   <tmp>/assets/svg/    (upstream shared artwork; the loader no longer reads it)
 //   <tmp>/userData/themes/<id>/theme.json   (user-installed)
 function makeFixture(themes) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-theme-"));
@@ -95,7 +95,7 @@ describe("theme-loader strict mode", () => {
   let fixture;
   before(() => {
     fixture = makeFixture([
-      { id: "clawd", builtin: true, json: validThemeJson({ name: "Clawd" }) },
+      { id: "halo", builtin: true, json: validThemeJson({ name: "Halo" }) },
       { id: "good", builtin: true, json: validThemeJson({ name: "Good" }) },
       {
         id: "updatevisuals",
@@ -143,14 +143,15 @@ describe("theme-loader strict mode", () => {
   });
   after(() => fixture && fixture.cleanup());
 
-  it("lenient load falls back to clawd when theme missing", () => {
+  it("lenient load falls back to the bundled halo theme when theme missing", () => {
     const theme = themeLoader.loadTheme("doesNotExist");
-    assert.strictEqual(theme._id, "clawd");
+    assert.strictEqual(themeLoader.DEFAULT_THEME_ID, "halo");
+    assert.strictEqual(theme._id, "halo");
   });
 
   it("lenient load falls back when theme validation fails", () => {
     const theme = themeLoader.loadTheme("broken");
-    assert.strictEqual(theme._id, "clawd");
+    assert.strictEqual(theme._id, "halo");
   });
 
   it("strict load throws when theme is missing", () => {
