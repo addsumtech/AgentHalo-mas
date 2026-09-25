@@ -6,9 +6,9 @@
 
 A quiet desktop companion for your AI tasks.
 
-AgentHalo shows working and waiting tasks, opens the selected task, and includes 20 character themes with animations and sounds. Background child tasks stay out of the task list.
+AgentHalo shows working and waiting tasks, opens the selected task, and includes 18 characters with animations and sounds: 17 original companions and Sun Wukong. Background child tasks stay out of the task list.
 
-See the [workspace guide](../README.md) for current integrations and [verification records](../docs/INTEGRATION-FIXES-2026-09-07.md).
+This is the Mac App Store edition. See the [store build notes](../README.md) for what it includes.
 
 ## Development
 
