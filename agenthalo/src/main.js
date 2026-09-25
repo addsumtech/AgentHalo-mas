@@ -470,7 +470,7 @@ const _settingsController = createSettingsController({
     stopMonitorForAgent: (id) => agentRuntime && agentRuntime.stopMonitorForAgent(id),
     authorizeAgentConfigDir: (id, options) => {
       const sandboxAccess = require("./sandbox-access");
-      return sandboxAccess.authorize(id, options);
+      return sandboxAccess.authorize(id, { ...options, parentWindow: getSettingsWindow() });
     },
     listAuthorizedConfigDirs: () => {
       const sandboxAccess = require("./sandbox-access");
@@ -579,6 +579,7 @@ _settingsController.subscribeKey("autoStartWithCodex", (_enabled, snapshot) => {
 // assign directly.
 let lang = _settingsController.get("lang");
 const translate = createTranslator(() => lang);
+require("./sandbox-access").setTranslator(translate);
 
 function getDashboardI18nPayload() {
   const dict = i18n[lang] || i18n.en;

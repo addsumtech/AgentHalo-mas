@@ -68,4 +68,156 @@ describe("sandbox-access", () => {
     assert.strictEqual(result.status, "error");
     assert.strictEqual(sandboxAccess.getAuthorized("claude-code", { userDataDir }), null);
   });
+
+  function fakeScopedElectron() {
+    const calls = [];
+    return {
+      calls,
+      electron: {
+        app: {
+          // Electron's MAS API returns the stop function; there is no
+          // app.stopAccessingSecurityScopedResource.
+          startAccessingSecurityScopedResource(bookmark) {
+            calls.push(`start:${bookmark}`);
+            return () => calls.push(`stop:${bookmark}`);
+          },
+        },
+      },
+    };
+  }
+
+  it("stops security-scoped access with the function Electron returns", () => {
+    const { calls, electron } = fakeScopedElectron();
+    const record = { agentId: "codex", bookmark: "bm", homeDir: "/Users/me" };
+    const value = sandboxAccess.withAccess(record, () => {
+      calls.push("write");
+      return "done";
+    }, { electron });
+    assert.strictEqual(value, "done");
+    assert.deepStrictEqual(calls, ["start:bm", "write", "stop:bm"]);
+  });
+
+  it("keeps access open until an async sync settles", async () => {
+    const { calls, electron } = fakeScopedElectron();
+    const record = { agentId: "claude-code", bookmark: "bm", homeDir: "/Users/me" };
+    let finishWrite;
+    const pending = sandboxAccess.withAccess(record, () => new Promise((resolve) => {
+      finishWrite = () => {
+        calls.push("write");
+        resolve({ status: "ok" });
+      };
+    }), { electron });
+    assert.deepStrictEqual(calls, ["start:bm"]);
+    finishWrite();
+    assert.deepStrictEqual(await pending, { status: "ok" });
+    assert.deepStrictEqual(calls, ["start:bm", "write", "stop:bm"]);
+  });
+
+  it("stops access when the sync throws", () => {
+    const { calls, electron } = fakeScopedElectron();
+    const record = { agentId: "codex", bookmark: "bm", homeDir: "/Users/me" };
+    assert.throws(() => sandboxAccess.withAccess(record, () => {
+      throw new Error("boom");
+    }, { electron }), /boom/);
+    assert.deepStrictEqual(calls, ["start:bm", "stop:bm"]);
+  });
+
+  it("opens the picker next to the real home folder with hidden folders visible", async () => {
+    let seen = null;
+    const parent = { isDestroyed: () => false };
+    const result = await sandboxAccess.authorize("claude-code", {
+      userDataDir,
+      force: true,
+      parentWindow: parent,
+      os: {
+        userInfo: () => ({ homedir: "/Users/me" }),
+        homedir: () => "/Users/me/Library/Containers/com.addsum.agenthalo/Data",
+      },
+      electron: {
+        dialog: {
+          showOpenDialog: async (win, options) => {
+            seen = { win, options };
+            return { canceled: false, filePaths: [path.join(userDataDir, ".claude")], bookmarks: ["bm"] };
+          },
+        },
+      },
+    });
+    assert.strictEqual(seen.win, parent);
+    assert.strictEqual(seen.options.defaultPath, path.join("/Users/me", ".claude"));
+    assert.ok(seen.options.properties.includes("showHiddenFiles"));
+    assert.strictEqual(seen.options.securityScopedBookmarks, true);
+    assert.strictEqual(result.status, "ok");
+    assert.strictEqual(result.homeDir, userDataDir);
+    assert.strictEqual(result.bookmark, "bm");
+  });
+
+  function pickerReturning(selected) {
+    return {
+      dialog: {
+        showOpenDialog: async () => ({ canceled: false, filePaths: [selected], bookmarks: ["bm"] }),
+      },
+    };
+  }
+
+  it("rejects a folder that is not the tool's config folder and saves nothing", async () => {
+    const unrelated = path.join(userDataDir, "Documents");
+    fs.mkdirSync(unrelated, { recursive: true });
+    const result = await sandboxAccess.authorize("claude-code", {
+      userDataDir,
+      force: true,
+      electron: pickerReturning(unrelated),
+    });
+    assert.strictEqual(result.status, "error");
+    assert.strictEqual(result.reason, "wrong-folder");
+    assert.match(result.message, /~\/\.claude/);
+    assert.strictEqual(sandboxAccess.getAuthorized("claude-code", { userDataDir }), null);
+  });
+
+  it("accepts the home folder when it contains the tool folder", async () => {
+    const home = path.join(userDataDir, "home");
+    fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
+    const result = await sandboxAccess.authorize("codex", {
+      userDataDir,
+      force: true,
+      electron: pickerReturning(home),
+    });
+    assert.strictEqual(result.status, "ok");
+    assert.strictEqual(result.homeDir, home);
+  });
+
+  it("maps nested and differently cased tool folders back to their home", () => {
+    const home = path.join(userDataDir, "home");
+    assert.strictEqual(
+      sandboxAccess.resolveHomeDir("opencode", path.join(home, ".config", "opencode")),
+      home
+    );
+    assert.strictEqual(
+      sandboxAccess.resolveHomeDir("qwenwork", path.join(home, ".qwenworkcn")),
+      home
+    );
+    assert.strictEqual(sandboxAccess.resolveHomeDir("kiro-cli", path.join(home, ".kiro")), home);
+    assert.strictEqual(sandboxAccess.resolveHomeDir("workbuddy", path.join(home, ".workbuddy-ai")), home);
+    assert.strictEqual(
+      sandboxAccess.isConfigFolderSelection("opencode", path.join(home, ".opencode")),
+      false
+    );
+  });
+
+  it("still accepts the legacy WorkBuddy folder", () => {
+    const home = path.join(userDataDir, "home");
+    fs.mkdirSync(path.join(home, ".workbuddy"), { recursive: true });
+    assert.strictEqual(sandboxAccess.resolveHomeDir("workbuddy", path.join(home, ".workbuddy")), home);
+    assert.strictEqual(sandboxAccess.isConfigFolderSelection("workbuddy", path.join(home, ".workbuddy")), true);
+    assert.strictEqual(sandboxAccess.isConfigFolderSelection("workbuddy", home), true);
+  });
+
+  it("uses the installed translator and falls back to English", () => {
+    try {
+      assert.match(sandboxAccess.unauthorizedMessage("codex"), /^~\/\.codex is not authorized yet/);
+      sandboxAccess.setTranslator((key) => (key === "sandboxFolderNotAuthorized" ? "尚未授权 {folder}" : key));
+      assert.strictEqual(sandboxAccess.unauthorizedMessage("codex"), "尚未授权 ~/.codex");
+    } finally {
+      sandboxAccess.setTranslator(null);
+    }
+  });
 });

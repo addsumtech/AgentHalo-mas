@@ -2202,8 +2202,12 @@
       return Promise.resolve();
     }
     return window.settingsAPI.command("listAuthorizedConfigDirs").then((result) => {
-      if (result && result.status === "ok" && result.dirs) {
-        runtime.authorizedDirs = result.dirs;
+      if (!result || result.status !== "ok" || !result.dirs) return;
+      // render() calls this on every pass, so only a real change re-renders.
+      const changed = JSON.stringify(result.dirs) !== JSON.stringify(runtime.authorizedDirs || {});
+      runtime.authorizedDirs = result.dirs;
+      if (changed && ops && typeof ops.requestRender === "function") {
+        ops.requestRender({ content: true });
       }
     }).catch(() => {});
   }
@@ -2239,7 +2243,10 @@
           force: true,
         });
         if (!result || result.status !== "ok") {
-          ops.showToast(t("toastAgentConfigDirDenied"), { error: true });
+          const message = result && result.reason === "wrong-folder" && result.message
+            ? result.message
+            : t("toastAgentConfigDirDenied");
+          ops.showToast(message, { error: true });
           return;
         }
         await refreshAuthorizedDirs();

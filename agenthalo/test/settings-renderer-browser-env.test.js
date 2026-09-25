@@ -1525,6 +1525,19 @@ function loadThemeTabForTest({
   return { content, commands, updates, core, renderContent };
 }
 
+// The store build asks for the authorized config folders on every Agents tab
+// render. Answer that query here, unless a test supplies its own dirs, so the
+// other tests keep asserting only their own command order.
+function withAuthorizedConfigDirs(api, dirs = api.authorizedConfigDirs || {}) {
+  const command = api.command;
+  return {
+    ...api,
+    command: (name, payload) => (name === "listAuthorizedConfigDirs"
+      ? Promise.resolve({ status: "ok", dirs })
+      : command(name, payload)),
+  };
+}
+
 function loadAgentsTabForTest({
   snapshot,
   agentMetadata,
@@ -1565,10 +1578,10 @@ function loadAgentsTabForTest({
     setTimeout,
     window: null,
     globalThis: null,
-    settingsAPI: {
+    settingsAPI: withAuthorizedConfigDirs({
       command: () => Promise.resolve({ status: "ok" }),
       ...settingsAPI,
-    },
+    }),
     doctor,
     ClawdSettingsSizeSlider: {
       SIZE_UI_MIN: 1,
@@ -12424,6 +12437,30 @@ describe("settings renderer browser environment", () => {
     assert.ok(!agentsSource.includes("if (disabled || btn.classList.contains(\"active\")) return;"));
     assert.ok(agentsSource.includes("if (btn.disabled || btn.classList.contains(\"active\")) return;"));
     assert.ok(!agentsSource.includes("codex-permission-mode-transitioning"));
+  });
+
+  it("shows an authorized config folder once the folder list arrives", async () => {
+    const harness = loadAgentsTabForTest({
+      snapshot: { agents: { "claude-code": { enabled: true, integrationInstalled: true } } },
+      agentMetadata: [{ id: "claude-code", name: "Claude Code", eventSource: "hook", capabilities: {} }],
+      settingsAPI: {
+        authorizedConfigDirs: {
+          "claude-code": { path: "/Users/me/.claude", homeDir: "/Users/me", label: "~/.claude" },
+        },
+      },
+    });
+    harness.core.ops.requestRender({ content: true });
+    harness.raf.flush();
+    const labelText = () => {
+      const label = harness.content.querySelector(".agent-config-dir-row .row-label");
+      return label && label.textContent;
+    };
+    assert.strictEqual(labelText(), "agentConfigDirUnauthorized");
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+    harness.raf.flush();
+    assert.strictEqual(labelText(), "agentConfigDirAuthorized");
+    const button = harness.content.querySelector(".agent-config-dir-authorize");
+    assert.strictEqual(button.textContent, "agentConfigDirChange");
   });
 
   it("confirms before uninstalling an agent integration", () => {

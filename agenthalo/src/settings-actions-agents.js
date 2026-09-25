@@ -570,7 +570,8 @@ async function authorizeAgentConfigDir(payload, deps = {}) {
     if (!result || result.status !== "ok") {
       return {
         status: "error",
-        message: (result && result.message) || "尚未授权配置目录",
+        ...(result && result.reason ? { reason: result.reason } : {}),
+        message: (result && result.message) || "Config folder not authorized",
       };
     }
     return {
@@ -620,7 +621,7 @@ async function installAgentIntegration(payload, deps = {}) {
       if (!auth || auth.status !== "ok") {
         return {
           status: "error",
-          message: (auth && auth.message) || "尚未授权配置目录",
+          message: (auth && auth.message) || "Config folder not authorized",
         };
       }
     } catch (err) {

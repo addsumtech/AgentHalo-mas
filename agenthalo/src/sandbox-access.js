@@ -14,15 +14,18 @@ const AGENT_CONFIG_DIRS = Object.freeze({
   "antigravity-cli": { folder: ".gemini", label: "~/.gemini" },
   "copilot-cli": { folder: ".copilot", label: "~/.copilot" },
   codebuddy: { folder: ".codebuddy", label: "~/.codebuddy" },
-  workbuddy: { folder: ".workbuddy", label: "~/.workbuddy" },
-  "kiro-cli": { folder: ".kiro-cli", label: "~/.kiro-cli" },
+  // Folder names below follow what each installer writes: WorkBuddy AI keeps
+  // its settings in ~/.workbuddy-ai, Kiro in ~/.kiro/agents, and the opencode
+  // family under ~/.config.
+  workbuddy: { folder: ".workbuddy-ai", altFolders: [".workbuddy"], label: "~/.workbuddy-ai" },
+  "kiro-cli": { folder: ".kiro", label: "~/.kiro" },
   "kimi-cli": { folder: ".kimi", label: "~/.kimi" },
   "qwen-code": { folder: ".qwen", label: "~/.qwen" },
   zcode: { folder: ".zcode", label: "~/.zcode" },
   codewhale: { folder: ".codewhale", label: "~/.codewhale" },
   "deepseek-harness": { folder: ".dsh", label: "~/.dsh" },
-  opencode: { folder: ".opencode", label: "~/.opencode" },
-  mimocode: { folder: ".mimocode", label: "~/.mimocode" },
+  opencode: { folder: ".config/opencode", label: "~/.config/opencode" },
+  mimocode: { folder: ".config/mimocode", label: "~/.config/mimocode" },
   pi: { folder: ".pi", label: "~/.pi" },
   openclaw: { folder: ".openclaw", label: "~/.openclaw" },
   hermes: { folder: ".hermes", label: "~/.hermes" },
@@ -33,6 +36,37 @@ const AGENT_CONFIG_DIRS = Object.freeze({
   qwenwork: { folder: ".QwenWorkCN", label: "~/.QwenWorkCN" },
 });
 
+const FALLBACK_TEXT = Object.freeze({
+  sandboxPickFolderTitle: "Choose {folder}",
+  sandboxPickFolderMessage: "Select the {folder} folder. AgentHalo only adds its connection entries inside this folder.",
+  sandboxPickFolderButton: "Allow Folder",
+  sandboxFolderNotAuthorized: "{folder} is not authorized yet. Choose this tool's config folder first.",
+  sandboxPickerUnavailable: "The system folder picker is not available.",
+  sandboxWrongFolder: "That folder is not {folder}. Choose {folder} or your home folder.",
+});
+
+let translateText = null;
+
+// main.js installs its translator so dialog and status text follow the app
+// language. Tests and early callers fall back to English.
+function setTranslator(translate) {
+  translateText = typeof translate === "function" ? translate : null;
+}
+
+function text(key, vars = {}) {
+  let value = FALLBACK_TEXT[key] || key;
+  if (translateText) {
+    try {
+      const translated = translateText(key);
+      if (typeof translated === "string" && translated && translated !== key) value = translated;
+    } catch {}
+  }
+  for (const [name, replacement] of Object.entries(vars)) {
+    value = value.split(`{${name}}`).join(String(replacement));
+  }
+  return value;
+}
+
 function specFor(agentId) {
   return AGENT_CONFIG_DIRS[agentId] || {
     folder: String(agentId || "agent"),
@@ -41,8 +75,19 @@ function specFor(agentId) {
 }
 
 function unauthorizedMessage(agentId) {
-  const spec = specFor(agentId);
-  return `尚未授权 ${spec.label}。请先选择该工具的配置文件夹。`;
+  return text("sandboxFolderNotAuthorized", { folder: specFor(agentId).label });
+}
+
+// Inside App Sandbox, HOME (and so os.homedir()) is the app container. The
+// user database still reports the real home, where tools keep their config
+// folders, so the picker can open next to them.
+function realHomeDir(options = {}) {
+  const osModule = options.os || os;
+  try {
+    const info = osModule.userInfo();
+    if (info && typeof info.homedir === "string" && info.homedir) return info.homedir;
+  } catch {}
+  return osModule.homedir();
 }
 
 function resolveStorePath(options = {}) {
@@ -75,15 +120,49 @@ function writeStore(store, options = {}) {
   fs.renameSync(tmp, storePath);
 }
 
+function folderSegments(folder) {
+  return String(folder).split("/").filter(Boolean);
+}
+
+// The main folder first, then any older layout the installer still accepts
+// (legacy WorkBuddy keeps settings in ~/.workbuddy).
+function acceptedFolders(spec) {
+  return [spec.folder, ...(Array.isArray(spec.altFolders) ? spec.altFolders : [])];
+}
+
+// Returns the home that contains the tool folder when selectedPath is that
+// folder (e.g. /Users/me/.config/opencode -> /Users/me), else null. Names are
+// compared case-insensitively because macOS volumes usually are.
+function homeAboveConfigFolder(spec, selectedPath) {
+  const parts = path.resolve(selectedPath).split(path.sep);
+  for (const folder of acceptedFolders(spec)) {
+    const segments = folderSegments(folder);
+    if (segments.length === 0 || parts.length <= segments.length) continue;
+    const tail = parts.slice(-segments.length);
+    const matches = tail.every((part, index) => part.toLowerCase() === segments[index].toLowerCase());
+    if (matches) return parts.slice(0, -segments.length).join(path.sep) || path.sep;
+  }
+  return null;
+}
+
 function resolveHomeDir(agentId, selectedPath) {
+  return homeAboveConfigFolder(specFor(agentId), selectedPath) || path.resolve(selectedPath);
+}
+
+// A selection is usable when it is the tool folder itself or a folder that
+// contains it (usually the home folder). Anything else would make the
+// installers create a stray config folder inside an unrelated directory.
+function isConfigFolderSelection(agentId, selectedPath, options = {}) {
   const spec = specFor(agentId);
-  const resolved = path.resolve(selectedPath);
-  const base = path.basename(resolved);
-  if (base === spec.folder) return path.dirname(resolved);
-  try {
-    if (fs.existsSync(path.join(resolved, spec.folder))) return resolved;
-  } catch {}
-  return resolved;
+  if (homeAboveConfigFolder(spec, selectedPath)) return true;
+  const fsModule = options.fs || fs;
+  return acceptedFolders(spec).some((folder) => {
+    try {
+      return fsModule.existsSync(path.join(path.resolve(selectedPath), ...folderSegments(folder)));
+    } catch {
+      return false;
+    }
+  });
 }
 
 function getAuthorized(agentId, options = {}) {
@@ -138,35 +217,46 @@ function saveAuthorized(agentId, selectedPath, bookmark, options = {}) {
   return getAuthorized(agentId, options);
 }
 
+// Returns the stop function Electron hands back, or null when there is no
+// bookmark or the build is not sandboxed. Every returned function must be
+// called once; a missed call leaks a kernel resource, and enough leaks cut the
+// app off from every folder outside its container until it relaunches.
 function startAccess(record, options = {}) {
-  if (!record || !record.bookmark) return false;
+  if (!record || !record.bookmark) return null;
   const electron = options.electron || require("electron");
   const app = electron && electron.app;
-  if (!app || typeof app.startAccessingSecurityScopedResource !== "function") return false;
+  if (!app || typeof app.startAccessingSecurityScopedResource !== "function") return null;
   try {
-    return !!app.startAccessingSecurityScopedResource(record.bookmark);
+    const stop = app.startAccessingSecurityScopedResource(record.bookmark);
+    return typeof stop === "function" ? stop : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-function stopAccess(record, started, options = {}) {
-  if (!started || !record || !record.bookmark) return;
-  const electron = options.electron || require("electron");
-  const app = electron && electron.app;
-  if (!app || typeof app.stopAccessingSecurityScopedResource !== "function") return;
+function stopAccess(stop) {
+  if (typeof stop !== "function") return;
   try {
-    app.stopAccessingSecurityScopedResource(record.bookmark);
+    stop();
   } catch {}
 }
 
+// Keeps the folder reachable until fn has finished, including async syncs
+// whose writes land after fn returns (Claude Code hooks go through a queue).
 function withAccess(record, fn, options = {}) {
-  const started = startAccess(record, options);
+  const stop = startAccess(record, options);
+  let result;
   try {
-    return fn(record);
-  } finally {
-    stopAccess(record, started, options);
+    result = fn(record);
+  } catch (err) {
+    stopAccess(stop);
+    throw err;
   }
+  if (result && typeof result.then === "function") {
+    return Promise.resolve(result).finally(() => stopAccess(stop));
+  }
+  stopAccess(stop);
+  return result;
 }
 
 async function authorize(agentId, options = {}) {
@@ -181,21 +271,34 @@ async function authorize(agentId, options = {}) {
   const electron = options.electron || require("electron");
   const dialog = electron && electron.dialog;
   if (!dialog || typeof dialog.showOpenDialog !== "function") {
-    return { status: "error", message: "系统文件夹选择器不可用" };
+    return { status: "error", message: text("sandboxPickerUnavailable") };
   }
-  const defaultPath = path.join(os.homedir(), spec.folder);
-  const result = await dialog.showOpenDialog({
-    title: `选择 ${spec.label}`,
-    message: `请选中 ${spec.label} 文件夹。AgentHalo 只会在该目录写入 hook，不会读取对话内容。`,
-    buttonLabel: "授权此目录",
-    defaultPath,
-    properties: ["openDirectory", "createDirectory"],
+  const dialogOptions = {
+    title: text("sandboxPickFolderTitle", { folder: spec.label }),
+    message: text("sandboxPickFolderMessage", { folder: spec.label }),
+    buttonLabel: text("sandboxPickFolderButton"),
+    defaultPath: path.join(realHomeDir(options), ...folderSegments(spec.folder)),
+    // Tool config folders such as ~/.claude are hidden; without this the
+    // panel does not list them. No createDirectory: an empty new folder is
+    // never a tool's real config folder.
+    properties: ["openDirectory", "showHiddenFiles"],
     securityScopedBookmarks: true,
-  });
+  };
+  const parent = options.parentWindow;
+  const result = parent && typeof parent.isDestroyed === "function" && !parent.isDestroyed()
+    ? await dialog.showOpenDialog(parent, dialogOptions)
+    : await dialog.showOpenDialog(dialogOptions);
   if (!result || result.canceled || !Array.isArray(result.filePaths) || !result.filePaths[0]) {
     return { status: "error", message: unauthorizedMessage(agentId) };
   }
   const selectedPath = result.filePaths[0];
+  if (!isConfigFolderSelection(agentId, selectedPath, options)) {
+    return {
+      status: "error",
+      reason: "wrong-folder",
+      message: text("sandboxWrongFolder", { folder: spec.label }),
+    };
+  }
   const bookmark = Array.isArray(result.bookmarks) ? (result.bookmarks[0] || "") : "";
   const record = saveAuthorized(agentId, selectedPath, bookmark, options);
   return { status: "ok", ...record, reused: false };
@@ -216,10 +319,13 @@ function requireAuthorized(agentId, options = {}) {
 module.exports = {
   AGENT_CONFIG_DIRS,
   STORE_NAME,
+  setTranslator,
   specFor,
   unauthorizedMessage,
+  realHomeDir,
   resolveStorePath,
   resolveHomeDir,
+  isConfigFolderSelection,
   getAuthorized,
   listAuthorized,
   forgetAuthorized,
