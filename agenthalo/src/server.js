@@ -2,6 +2,7 @@
 // Extracted from main.js L1337-1528
 
 const fs = require("fs");
+const path = require("path");
 const http = require("http");
 const crypto = require("crypto");
 const {
@@ -309,9 +310,29 @@ const claudeExpectedAutoStartScriptPath = typeof ctx.expectedAutoStartScriptPath
   : getClaudeAutoStartScriptPath();
 const claudeCoreEventsForHealth = Array.isArray(ctx.coreEvents) ? ctx.coreEvents : CLAUDE_CORE_HOOK_EVENTS;
 const claudeHookPlatformForHealth = ctx.platform || process.platform;
-const claudeSettingsVerifyPath = typeof ctx.claudeSettingsPath === "string"
-  ? ctx.claudeSettingsPath
-  : resolveClaudeSettingsPath();
+// Store build: the sandbox only reaches the ~/.claude the user authorized.
+// ctx.getClaudeHomeDir returns the home that holds it, or null while nothing
+// is authorized; Claude writes then skip instead of landing in the app
+// container. Without the getter (tests, unsandboxed runs) the installers keep
+// their os.homedir() default.
+function claudeHomeOptions() {
+  if (typeof ctx.getClaudeHomeDir !== "function") return {};
+  const homeDir = ctx.getClaudeHomeDir();
+  return typeof homeDir === "string" && homeDir ? { homeDir } : null;
+}
+
+function claudeNotAuthorizedResult() {
+  return {
+    status: "skipped",
+    reason: "not-authorized",
+    message: "Choose the Claude Code config folder (~/.claude) in Settings first",
+  };
+}
+
+function claudeSettingsVerifyPath(home = claudeHomeOptions()) {
+  if (typeof ctx.claudeSettingsPath === "string") return ctx.claudeSettingsPath;
+  return resolveClaudeSettingsPath(home || {});
+}
 
 function claudeHookSourceMissing({ requireAutoStart = false } = {}) {
   try {
@@ -329,9 +350,9 @@ function claudeHookSourceMissing({ requireAutoStart = false } = {}) {
   }
 }
 
-function readClaudeSettingsRawForVerify() {
+function readClaudeSettingsRawForVerify(home) {
   try {
-    return claudeFsApi.readFileSync(claudeSettingsVerifyPath, "utf-8");
+    return claudeFsApi.readFileSync(claudeSettingsVerifyPath(home), "utf-8");
   } catch {
     return "";
   }
@@ -341,7 +362,8 @@ function buildClaudeHookReportForVerify(overrides = {}) {
   const requireAutoStart = overrides.requireAutoStart !== undefined
     ? overrides.requireAutoStart
     : !!ctx.autoStartWithClaude;
-  return inspectClaudeHookHealth(readClaudeSettingsRawForVerify(), {
+  const home = overrides.homeDir ? { homeDir: overrides.homeDir } : claudeHomeOptions();
+  return inspectClaudeHookHealth(readClaudeSettingsRawForVerify(home), {
     expectedPermissionUrl: buildPermissionUrl(getHookServerPort()),
     expectedHookScriptPath: claudeExpectedHookScriptPath,
     expectedAutoStartScriptPath: claudeExpectedAutoStartScriptPath,
@@ -354,6 +376,8 @@ function buildClaudeHookReportForVerify(overrides = {}) {
 
 function registerClaudeHooksTask(meta) {
   return async () => {
+    const home = meta.homeDir ? { homeDir: meta.homeDir } : claudeHomeOptions();
+    if (!home) return claudeNotAuthorizedResult();
     // Source preflight: reconcile only ever rewrites toward this path, so if
     // it doesn't exist writing is pointless (and would just leave a command
     // pointing nowhere). Matches the periodic supervisor's own source-missing
@@ -375,11 +399,12 @@ function registerClaudeHooksTask(meta) {
       silent: true,
       autoStart: meta.autoStart,
       port: meta.port,
+      ...home,
     });
     if (CLAUDE_STATUSLINE_REGISTER_SOURCES.has(meta.source)) {
       try {
         if (ctx.claudeQuotaCollectionEnabled === true) {
-          const statuslineResult = registerClaudeStatusline({ silent: true });
+          const statuslineResult = registerClaudeStatusline({ silent: true, ...home });
           if (statuslineResult.changed) {
             console.log("AgentHalo: registered Claude Code statusline");
           }
@@ -387,7 +412,7 @@ function registerClaudeHooksTask(meta) {
           claudeStatuslineIngressSuppressed = true;
           // Migration/startup cleanup is ownership-safe: the installer only
           // removes a statusLine command carrying AgentHalo's marker.
-          unregisterClaudeStatusline({ backup: true, silent: true });
+          unregisterClaudeStatusline({ backup: true, silent: true, ...home });
           clearLocalClaudeStatuslineAuthority();
           clearLocalClaudeQuota();
         }
@@ -405,7 +430,7 @@ function registerClaudeHooksTask(meta) {
     // caller (Doctor Fix and Settings Install included, not just the
     // automatic supervisor path) consumes a verified result instead of a
     // blind "ok" (#657 review finding).
-    const verifyReport = buildClaudeHookReportForVerify({ requireAutoStart: !!meta.autoStart });
+    const verifyReport = buildClaudeHookReportForVerify({ requireAutoStart: !!meta.autoStart, ...home });
     if (!isExplicitRepairVerified(verifyReport)) {
       return {
         status: "error",
@@ -435,15 +460,19 @@ function registerClaudeHooksTask(meta) {
 
 function unregisterClaudeHooksTask(meta) {
   return async () => {
+    const home = meta.homeDir ? { homeDir: meta.homeDir } : claudeHomeOptions();
+    // Nothing was written without an authorized folder, so there is nothing
+    // to remove either.
+    if (!home) return { status: "ok", removed: 0, changed: false, backupPaths: [] };
     const { unregisterHooksAsync, unregisterClaudeStatusline } = require("../hooks/install.js");
     const removesStatusline = CLAUDE_STATUSLINE_UNREGISTER_SOURCES.has(meta.source);
     const previousSuppression = claudeStatuslineIngressSuppressed;
     if (removesStatusline) claudeStatuslineIngressSuppressed = true;
     try {
-      const hooksResult = await unregisterHooksAsync({ backup: true });
+      const hooksResult = await unregisterHooksAsync({ backup: true, ...home });
       let statuslineResult = null;
       if (removesStatusline) {
-        statuslineResult = unregisterClaudeStatusline({ backup: true, silent: true });
+        statuslineResult = unregisterClaudeStatusline({ backup: true, silent: true, ...home });
         clearLocalClaudeStatuslineAuthority();
         clearLocalClaudeQuota();
       }
@@ -461,14 +490,17 @@ function unregisterClaudeHooksTask(meta) {
 function syncClawdHooksQueued(implOptions = {}) {
   const source = typeof implOptions.source === "string" ? implOptions.source : "unspecified";
   const automatic = implOptions.automatic !== false;
-  const meta = { source, autoStart: implOptions.autoStart, port: implOptions.port };
+  const meta = { source, autoStart: implOptions.autoStart, port: implOptions.port, homeDir: implOptions.homeDir };
   return claudeHookOperations.enqueue({ source, automatic }, registerClaudeHooksTask(meta));
 }
 
 function uninstallClaudeHooksQueued(callOptions = {}) {
   const source = typeof callOptions.source === "string" ? callOptions.source : "unspecified";
   const automatic = callOptions.automatic === true;
-  return claudeHookOperations.enqueue({ source, automatic }, unregisterClaudeHooksTask({ source }));
+  return claudeHookOperations.enqueue(
+    { source, automatic },
+    unregisterClaudeHooksTask({ source, homeDir: callOptions.homeDir })
+  );
 }
 
 function setClaudeQuotaCollectionEnabled(callOptions = {}) {
@@ -481,11 +513,14 @@ function setClaudeQuotaCollectionEnabled(callOptions = {}) {
       registerClaudeStatusline,
       unregisterClaudeStatusline,
     } = require("../hooks/install.js");
+    const home = claudeHomeOptions();
     if (!enabled) {
       const previousSuppression = claudeStatuslineIngressSuppressed;
       claudeStatuslineIngressSuppressed = true;
       try {
-        const result = unregisterClaudeStatusline({ backup: true, silent: true });
+        const result = home
+          ? unregisterClaudeStatusline({ backup: true, silent: true, ...home })
+          : { removed: 0, changed: false };
         clearLocalClaudeStatuslineAuthority();
         clearLocalClaudeQuota();
         return { status: "ok", enabled: false, ...result };
@@ -500,7 +535,8 @@ function setClaudeQuotaCollectionEnabled(callOptions = {}) {
         message: "Enable the Claude Code integration before collecting its usage metadata",
       };
     }
-    const result = registerClaudeStatusline({ backup: true, silent: true });
+    if (!home) return claudeNotAuthorizedResult();
+    const result = registerClaudeStatusline({ backup: true, silent: true, ...home });
     if (result.skippedExisting) {
       return {
         status: "error",
@@ -527,15 +563,17 @@ function setClaudeAutoStart(callOptions = {}) {
   const source = typeof callOptions.source === "string" ? callOptions.source : "auto-start";
   const enabled = callOptions.enabled === true;
   return claudeHookOperations.enqueue({ source, automatic: false }, async () => {
+    const home = claudeHomeOptions();
     if (!enabled) {
       // #657 plan §6.3 only carves out unregisterAutoStart() to keep its
       // existing synchronous call — it still runs inside this queue task, so
       // it's serialized against other Claude mutations without being made
       // async itself.
       const { unregisterAutoStart } = require("../hooks/install.js");
-      unregisterAutoStart();
+      if (home) unregisterAutoStart(home);
       return { status: "ok", enabled };
     }
+    if (!home) return claudeNotAuthorizedResult();
 
     if (claudeHookSourceMissing({ requireAutoStart: true })) {
       return {
@@ -550,9 +588,9 @@ function setClaudeAutoStart(callOptions = {}) {
     // version probe registerHooks() performs — use the async installer, like
     // every other register path.
     const { registerHooksAsync } = require("../hooks/install.js");
-    await registerHooksAsync({ silent: true, autoStart: true, port: getHookServerPort() });
+    await registerHooksAsync({ silent: true, autoStart: true, port: getHookServerPort(), ...home });
 
-    const verifyReport = buildClaudeHookReportForVerify({ requireAutoStart: true });
+    const verifyReport = buildClaudeHookReportForVerify({ requireAutoStart: true, ...home });
     if (!isExplicitRepairVerified(verifyReport)) {
       return {
         status: "error",
@@ -684,6 +722,12 @@ function repairRuntimeStatus() {
 
 const claudeSettingsWatcher = createClaudeSettingsWatcher({
   ...ctx,
+  // Watch the authorized ~/.claude, not the container copy.
+  get claudeSettingsDir() {
+    if (typeof ctx.claudeSettingsDir === "string") return ctx.claudeSettingsDir;
+    const home = claudeHomeOptions();
+    return home && home.homeDir ? path.join(home.homeDir, ".claude") : undefined;
+  },
   // Same live-getter fix as integrationSyncCtx above — the periodic health
   // check's requireAutoStart (claude-settings-watcher.js's buildReport())
   // must track the CURRENT setting, not whatever it was when the watcher
@@ -711,6 +755,7 @@ function getClaudeHookHealthStatus() {
 // Watch the directory (not the file) because atomic rename replaces the inode
 // and fs.watch on the old file silently stops firing on Windows.
 function startClaudeSettingsWatcher() {
+  if (claudeHomeOptions() === null) return false;
   return claudeSettingsWatcher.start();
 }
 

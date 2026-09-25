@@ -178,6 +178,7 @@ function getAuthorized(agentId, options = {}) {
     path: entry.path,
     homeDir,
     bookmark: typeof entry.bookmark === "string" ? entry.bookmark : "",
+    stale: staleAgents.has(agentId),
   };
 }
 
@@ -191,6 +192,7 @@ function listAuthorized(options = {}) {
         path: record.path,
         homeDir: record.homeDir,
         label: specFor(agentId).label,
+        ...(record.stale ? { stale: true } : {}),
       };
     }
   }
@@ -200,6 +202,7 @@ function listAuthorized(options = {}) {
 function forgetAuthorized(agentId, options = {}) {
   const store = readStore(options);
   if (!Object.prototype.hasOwnProperty.call(store, agentId)) return false;
+  releaseAccess(agentId);
   delete store[agentId];
   writeStore(store, options);
   return true;
@@ -228,10 +231,15 @@ function startAccess(record, options = {}) {
   if (!app || typeof app.startAccessingSecurityScopedResource !== "function") return null;
   try {
     const stop = app.startAccessingSecurityScopedResource(record.bookmark);
-    return typeof stop === "function" ? stop : null;
-  } catch {
-    return null;
-  }
+    if (typeof stop === "function") {
+      if (record.agentId) staleAgents.delete(record.agentId);
+      return stop;
+    }
+  } catch {}
+  // A bookmark that no longer resolves (folder moved, renamed or recreated)
+  // needs the user to choose the folder again.
+  if (record.agentId) staleAgents.add(record.agentId);
+  return null;
 }
 
 function stopAccess(stop) {
@@ -239,6 +247,51 @@ function stopAccess(stop) {
   try {
     stop();
   } catch {}
+}
+
+const staleAgents = new Set();
+
+// Scopes held for the life of the app, so the settings watcher, log monitors
+// and queued Claude writes can reach authorized folders without managing
+// their own access. main.js releases them on quit.
+const retainedAccess = new Map();
+
+function retainAccess(record, options = {}) {
+  if (!record || !record.agentId || !record.bookmark) return false;
+  const held = retainedAccess.get(record.agentId);
+  if (held && held.bookmark === record.bookmark) return true;
+  if (held) releaseAccess(record.agentId);
+  const stop = startAccess(record, options);
+  if (!stop) return false;
+  retainedAccess.set(record.agentId, { bookmark: record.bookmark, stop });
+  return true;
+}
+
+function releaseAccess(agentId) {
+  const held = retainedAccess.get(agentId);
+  if (!held) return;
+  retainedAccess.delete(agentId);
+  stopAccess(held.stop);
+}
+
+function retainAllAuthorized(options = {}) {
+  let retained = 0;
+  for (const agentId of Object.keys(readStore(options))) {
+    const record = getAuthorized(agentId, options);
+    if (record && retainAccess(record, options)) retained += 1;
+  }
+  return retained;
+}
+
+function releaseAllAccess() {
+  for (const agentId of [...retainedAccess.keys()]) releaseAccess(agentId);
+}
+
+// The home that holds an authorized tool folder, or null when the user has
+// not authorized one (or its bookmark went stale).
+function authorizedHomeDir(agentId, options = {}) {
+  const record = getAuthorized(agentId, options);
+  return record && !record.stale ? record.homeDir : null;
 }
 
 // Keeps the folder reachable until fn has finished, including async syncs
@@ -264,7 +317,7 @@ async function authorize(agentId, options = {}) {
     return { status: "error", message: "authorizeAgentConfigDir requires agentId" };
   }
   const existing = getAuthorized(agentId, options);
-  if (existing && options.force !== true) {
+  if (existing && !existing.stale && options.force !== true) {
     return { status: "ok", ...existing, reused: true };
   }
   const spec = specFor(agentId);
@@ -300,16 +353,18 @@ async function authorize(agentId, options = {}) {
     };
   }
   const bookmark = Array.isArray(result.bookmarks) ? (result.bookmarks[0] || "") : "";
+  staleAgents.delete(agentId);
   const record = saveAuthorized(agentId, selectedPath, bookmark, options);
+  retainAccess(record, options);
   return { status: "ok", ...record, reused: false };
 }
 
 function requireAuthorized(agentId, options = {}) {
   const record = getAuthorized(agentId, options);
-  if (!record) {
+  if (!record || record.stale) {
     return {
       status: options.automatic === false ? "error" : "skipped",
-      reason: "not-authorized",
+      reason: record ? "stale-authorization" : "not-authorized",
       message: unauthorizedMessage(agentId),
     };
   }
@@ -333,6 +388,11 @@ module.exports = {
   startAccess,
   stopAccess,
   withAccess,
+  retainAccess,
+  releaseAccess,
+  retainAllAuthorized,
+  releaseAllAccess,
+  authorizedHomeDir,
   authorize,
   requireAuthorized,
 };

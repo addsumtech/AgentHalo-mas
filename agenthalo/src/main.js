@@ -2582,6 +2582,9 @@ agentRuntime = createAgentRuntimeMain({
 
 // ── HTTP server — delegated to src/server.js ──
 const _serverCtx = {
+  // Sandboxed build: Claude writes, checks and watches go to the ~/.claude the
+  // user authorized; null (nothing authorized) makes them skip.
+  getClaudeHomeDir: () => require("./sandbox-access").authorizedHomeDir("claude-code"),
   get manageClaudeHooksAutomatically() { return manageClaudeHooksAutomatically; },
   get autoStartWithClaude() { return autoStartWithClaude; },
   get claudeQuotaCollectionEnabled() { return claudeQuotaCollectionEnabled; },
@@ -3978,6 +3981,9 @@ if (!gotTheLock) {
   }
 
   app.whenReady().then(async () => {
+    // Reopen every authorized tool folder for the life of the app before the
+    // hook server starts its startup sync and the settings watcher.
+    require("./sandbox-access").retainAllAuthorized();
     // Older macOS and development builds retain the padded runtime icon from
     // #416. Packaged Tahoe+ leaves the Dock untouched so macOS can apply the
     // user's Default/Dark/Clear/Tinted treatment to the bundle icon (#941).
@@ -4121,6 +4127,12 @@ if (!gotTheLock) {
     // on-disk hook state; unref'd so it never blocks a fast quit.
     const codexHookNudgeTimer = setTimeout(maybeNudgeCodexHookHealth, 4000);
     if (codexHookNudgeTimer && typeof codexHookNudgeTimer.unref === "function") codexHookNudgeTimer.unref();
+  });
+
+  // Quit cleanup can still write hook files, so folder access is released
+  // only once the app is really going away.
+  app.on("will-quit", () => {
+    require("./sandbox-access").releaseAllAccess();
   });
 
   app.on("before-quit", (event) => {
