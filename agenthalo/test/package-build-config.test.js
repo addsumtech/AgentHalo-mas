@@ -118,6 +118,41 @@ describe("Mac App Store configuration", () => {
   });
 });
 
+describe("Electron fuses", () => {
+  it("locks the packaged binary to the bundled app", () => {
+    assert.deepStrictEqual(pkg.build.electronFuses, {
+      runAsNode: false,
+      enableNodeOptionsEnvironmentVariable: false,
+      enableNodeCliInspectArguments: false,
+      onlyLoadAppFromAsar: true,
+      enableEmbeddedAsarIntegrityValidation: true,
+    });
+    // onlyLoadAppFromAsar and asar integrity both need an asar archive.
+    assert.notStrictEqual(pkg.build.asar, false);
+  });
+
+  it("never runs the packaged app binary as Node", () => {
+    // Hooks run under the user's own node through hooks/node-launcher.sh, so
+    // runAsNode can be off. Any shipped file that sets the variable would now
+    // silently start the GUI instead.
+    const offenders = [];
+    const visit = (dir) => {
+      for (const entry of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+        const rel = path.posix.join(dir, entry.name);
+        if (entry.isDirectory()) { visit(rel); continue; }
+        if (!/\.(?:c?js|mjs|ts|py|sh)$/.test(entry.name)) continue;
+        fs.readFileSync(path.join(ROOT, rel), "utf8").split("\n").forEach((line, index) => {
+          if (!line.includes("ELECTRON_RUN_AS_NODE")) return;
+          if (/^\s*(?:\/\/|\*|#)/.test(line) || /\bdelete\b/.test(line)) return;
+          offenders.push(`${rel}:${index + 1}`);
+        });
+      }
+    };
+    for (const dir of ["src", "hooks", "agents", "extensions"]) visit(dir);
+    assert.deepStrictEqual(offenders, []);
+  });
+});
+
 describe("store package contents", () => {
   it("ships project window icons, agent session icons and notices", () => {
     for (const glob of ["assets/icons/**/*", "assets/icons/agents/**/*", "NOTICE.md", "LICENSE"]) {

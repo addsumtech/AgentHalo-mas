@@ -71,6 +71,13 @@
     "appId": "com.addsum.agenthalo",
     "productName": "AgentHalo",
     "copyright": "© 2026 Addsum. Upstream: © 2026 Ruller_Lulu and contributors.",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true,
+      "enableEmbeddedAsarIntegrityValidation": true
+    },
     "protocols": [
       {
         "name": "AgentHalo Import Protocol",
