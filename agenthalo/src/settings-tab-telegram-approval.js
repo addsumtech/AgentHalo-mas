@@ -925,7 +925,7 @@
     guide.textContent = t("telegramNativeMigrationGuide");
     guide.addEventListener("click", () => {
       helpers.openExternalSafe(
-        "https://github.com/addsumtech/AgentHalo/blob/main/agenthalo/docs/guides/telegram-approval.md"
+        "https://github.com/addsumtech/AgentHalo-mas/blob/main/agenthalo/docs/guides/telegram-approval.md"
       );
     });
     actions.appendChild(verify);

@@ -116,6 +116,23 @@ describe("Mac App Store configuration", () => {
     assert.deepStrictEqual(pkg.build.publish, []);
     assert.deepStrictEqual(pkg.build.extraResources, []);
   });
+
+  it("links About to the privacy and support pages published from this repository", () => {
+    const sandbox = {};
+    require("node:vm").runInNewContext(fs.readFileSync(path.join(ROOT, "src", "settings-i18n.js"), "utf8"), { globalThis: sandbox });
+    for (const [lang, strings] of Object.entries(sandbox.ClawdSettingsI18n.STRINGS)) {
+      for (const [key, file] of [["aboutPrivacyUrl", "PRIVACY.md"], ["aboutSupportUrl", "SUPPORT.md"]]) {
+        assert.strictEqual(
+          strings[key],
+          `https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/${file}`,
+          `${lang}.${key}`
+        );
+      }
+    }
+    for (const file of ["PRIVACY.md", "SUPPORT.md"]) {
+      assert.ok(fs.existsSync(path.join(ROOT, "..", "docs", file)), `docs/${file} must exist at the repository root`);
+    }
+  });
 });
 
 describe("Electron fuses", () => {
