@@ -24,6 +24,17 @@ function makeFetch(responder) {
   return fetchImpl;
 }
 
+// A real request that is still in flight holds a socket, and that socket keeps
+// the event loop alive until the client's (deliberately unref'd) timeout
+// aborts it. A bare never-settling fake holds nothing, so Node 22's test
+// runner sees an empty loop and cancels the test and every one after it
+// (Node 24's runner happens to keep its own loop alive). Stand in for the
+// socket until the abort arrives.
+function holdLikeSocketUntilAbort(signal) {
+  const socket = setInterval(() => {}, 1000);
+  signal.addEventListener("abort", () => clearInterval(socket), { once: true });
+}
+
 function okWebhook() {
   return { ok: true, status: 200, text: async () => "ok" };
 }
@@ -856,10 +867,11 @@ test("permanent completion failure settles, advances FIFO, and clears in-flight 
   assert.equal(fetchImpl.calls.length, 3, "after history pruning, the key can enqueue again only if in-flight was cleared");
 });
 
-test("timeout aborts each fetch and bounded retry settles with timeout", async () => {
+test("timeout aborts each fetch and bounded retry settles with timeout", { timeout: 5000 }, async () => {
   const signals = [];
   const fetchImpl = makeFetch((_url, opts) => new Promise((_resolve, reject) => {
     signals.push(opts.signal);
+    holdLikeSocketUntilAbort(opts.signal);
     opts.signal.addEventListener("abort", () => {
       const err = new Error("aborted");
       err.name = "AbortError";
@@ -874,11 +886,12 @@ test("timeout aborts each fetch and bounded retry settles with timeout", async (
   assert.ok(signals.every((signal) => signal && signal.aborted), "each attempt owns an aborted signal");
 });
 
-test("an abort while reading a successful response body is still classified as timeout", async () => {
+test("an abort while reading a successful response body is still classified as timeout", { timeout: 5000 }, async () => {
   const fetchImpl = makeFetch((_url, opts) => ({
     ok: true,
     status: 200,
     text: () => new Promise((_resolve, reject) => {
+      holdLikeSocketUntilAbort(opts.signal);
       opts.signal.addEventListener("abort", () => {
         const err = new Error("body aborted");
         err.name = "AbortError";
