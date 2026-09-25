@@ -1,0 +1,249 @@
+"use strict";
+
+// Store build: the sandboxed app's ~/.clawd is inside its container, so the
+// app and its hooks exchange runtime.json, the Codex auto-start gate and the
+// Claude recovery leases through the authorized tool folders instead.
+
+const { afterEach, beforeEach, describe, it } = require("node:test");
+const assert = require("node:assert/strict");
+const { EventEmitter } = require("node:events");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const storeExchange = require("../hooks/store-exchange");
+const serverConfig = require("../hooks/server-config");
+const recoveryLease = require("../hooks/session-recovery-lease");
+const sandboxAccess = require("../src/sandbox-access");
+
+const STORE_ENV = Object.freeze({ AGENTHALO_STORE_HOOK: "1" });
+
+describe("store exchange folders", () => {
+  let root;
+  let home;
+  let userDataDir;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "agenthalo-exchange-"));
+    home = path.join(root, "home");
+    userDataDir = path.join(root, "userData");
+    fs.mkdirSync(home, { recursive: true });
+  });
+
+  afterEach(() => {
+    sandboxAccess.releaseAllAccess();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("looks in the tools' relocated folders first, then every known tool folder", () => {
+    const dirs = storeExchange.hookExchangeDirs({
+      homeDir: home,
+      env: { CLAUDE_CONFIG_DIR: "/custom/claude", CODEX_HOME: "relative/ignored" },
+    });
+    assert.equal(dirs[0], path.join("/custom/claude", "agenthalo"));
+    assert.ok(dirs.includes(path.join(home, ".codex", "agenthalo")));
+    assert.ok(dirs.includes(path.join(home, ".claude", "agenthalo")));
+    assert.ok(dirs.includes(path.join(home, ".workbuddy", "agenthalo")), "legacy WorkBuddy folder");
+    assert.ok(dirs.includes(path.join(home, ".config", "opencode", "agenthalo")));
+    assert.equal(new Set(dirs).size, dirs.length);
+    assert.ok(!dirs.some((dir) => dir.includes("relative")));
+  });
+
+  it("puts the app's folder inside whichever tool folder the user authorized", () => {
+    fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+    fs.mkdirSync(path.join(home, ".gemini"), { recursive: true });
+    fs.mkdirSync(path.join(home, ".workbuddy"), { recursive: true });
+    sandboxAccess.saveAuthorized("claude-code", path.join(home, ".claude"), "bm", { userDataDir });
+    // Chose the home folder rather than ~/.gemini; two tools share ~/.gemini.
+    sandboxAccess.saveAuthorized("gemini-cli", home, "bm", { userDataDir });
+    sandboxAccess.saveAuthorized("antigravity-cli", path.join(home, ".gemini"), "bm", { userDataDir });
+    // Only the legacy WorkBuddy folder exists under the chosen home.
+    sandboxAccess.saveAuthorized("workbuddy", home, "bm", { userDataDir });
+
+    assert.equal(sandboxAccess.exchangeDir("claude-code", { userDataDir }), path.join(home, ".claude", "agenthalo"));
+    assert.equal(sandboxAccess.exchangeDir("codex", { userDataDir }), null);
+    assert.deepEqual(sandboxAccess.exchangeDirs({ userDataDir }), [
+      path.join(home, ".claude", "agenthalo"),
+      path.join(home, ".gemini", "agenthalo"),
+      path.join(home, ".workbuddy", "agenthalo"),
+    ]);
+  });
+
+  it("leaves out a folder whose bookmark went stale", () => {
+    sandboxAccess.saveAuthorized("codex", path.join(home, ".codex"), "bm-old", { userDataDir });
+    const electron = {
+      app: { startAccessingSecurityScopedResource() { throw new Error("stale"); } },
+    };
+    sandboxAccess.retainAllAuthorized({ userDataDir, electron });
+    assert.deepEqual(sandboxAccess.exchangeDirs({ userDataDir }), []);
+  });
+});
+
+describe("runtime.json through the authorized folders", () => {
+  let root;
+  let home;
+  let container;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "agenthalo-runtime-mirror-"));
+    home = path.join(root, "home");
+    container = path.join(root, "container", ".clawd", "runtime.json");
+    fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+    fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const mirrors = () => [path.join(home, ".claude", "agenthalo"), path.join(home, ".codex", "agenthalo")];
+
+  it("lets a store hook read the port the sandboxed app wrote", () => {
+    assert.equal(serverConfig.writeRuntimeConfig(23335, {
+      runtimeConfigPath: container,
+      ownerPid: process.pid,
+      mirrorDirs: mirrors(),
+    }), true);
+    for (const dir of mirrors()) {
+      const file = path.join(dir, "runtime.json");
+      assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).port, 23335);
+      assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    }
+    assert.equal(serverConfig.readRuntimePort({ env: STORE_ENV, homeDir: home }), 23335);
+    assert.deepEqual(serverConfig.readRuntimeIdentity({ env: STORE_ENV, homeDir: home }), {
+      ok: true, reason: null, port: 23335, ownerPid: process.pid,
+    });
+    // Outside the store build hooks keep reading ~/.clawd.
+    assert.equal(serverConfig.readRuntimePort({ env: {}, homeDir: home }), null);
+  });
+
+  it("ignores a copy left by an app that has exited", () => {
+    serverConfig.writeRuntimeConfig(23334, { runtimeConfigPath: container, ownerPid: 4242, mirrorDirs: mirrors() });
+    const options = { env: STORE_ENV, homeDir: home, processAlive: (pid) => pid !== 4242 };
+    assert.equal(serverConfig.readRuntimePort(options), null);
+    // A live copy anywhere wins over the stale one.
+    serverConfig.writeRuntimeConfig(23336, {
+      runtimeConfigPath: container,
+      ownerPid: process.pid,
+      mirrorDirs: [path.join(home, ".codex", "agenthalo")],
+    });
+    assert.equal(serverConfig.readRuntimePort(options), 23336);
+  });
+
+  it("puts the app's port first when a hook picks where to post", () => {
+    serverConfig.writeRuntimeConfig(23337, { runtimeConfigPath: container, ownerPid: process.pid, mirrorDirs: mirrors() });
+    const saved = { HOME: process.env.HOME, STORE: process.env.AGENTHALO_STORE_HOOK, CLAUDE: process.env.CLAUDE_CONFIG_DIR };
+    try {
+      process.env.HOME = home;
+      process.env.AGENTHALO_STORE_HOOK = "1";
+      delete process.env.CLAUDE_CONFIG_DIR;
+      assert.equal(serverConfig.getPortCandidates(null)[0], 23337);
+    } finally {
+      for (const [key, name] of [["HOME", "HOME"], ["STORE", "AGENTHALO_STORE_HOOK"], ["CLAUDE", "CLAUDE_CONFIG_DIR"]]) {
+        if (saved[key] === undefined) delete process.env[name];
+        else process.env[name] = saved[key];
+      }
+    }
+  });
+
+  it("removes only its own copies on quit", () => {
+    serverConfig.writeRuntimeConfig(23333, { runtimeConfigPath: container, ownerPid: 111, mirrorDirs: mirrors() });
+    const codexCopy = path.join(home, ".codex", "agenthalo", "runtime.json");
+    serverConfig.writeRuntimeConfig(23334, { runtimeConfigPath: codexCopy, ownerPid: 222 });
+    const claudeCopy = path.join(home, ".claude", "agenthalo", "runtime.json");
+    assert.equal(JSON.parse(fs.readFileSync(claudeCopy, "utf8")).ownerPid, 111);
+    assert.equal(serverConfig.clearRuntimeConfig(container, { ownerPid: 111, mirrorDirs: mirrors() }), true);
+    assert.equal(fs.existsSync(container), false);
+    assert.equal(fs.existsSync(claudeCopy), false);
+    assert.equal(JSON.parse(fs.readFileSync(codexCopy, "utf8")).ownerPid, 222, "another instance's copy stays");
+  });
+});
+
+describe("store app server", () => {
+  function makeServer(mirrorDirs) {
+    const writes = [];
+    const clears = [];
+    const api = require("../src/server")({
+      createHttpServer() {
+        const server = new EventEmitter();
+        server.listening = true;
+        server.listen = function () { this.emit("listening"); };
+        server.close = () => {};
+        server.address = () => ({ address: "127.0.0.1", port: 23334 });
+        return server;
+      },
+      setImmediate: () => {},
+      getPortCandidates: () => [23334],
+      writeRuntimeConfig: (port, options) => { writes.push({ port, options }); return true; },
+      clearRuntimeConfig: (filePath, options) => { clears.push({ filePath, options }); return true; },
+      readRuntimePort: () => null,
+      readRuntimeIdentity: () => ({ ok: false }),
+      isWinHost: false,
+      getRuntimeMirrorDirs: () => mirrorDirs.slice(),
+    });
+    return { api, writes, clears };
+  }
+
+  it("mirrors runtime.json when it starts listening, on refresh, and clears the mirrors on quit", async () => {
+    const mirrorDirs = ["/Users/me/.claude/agenthalo"];
+    const { api, writes, clears } = makeServer(mirrorDirs);
+    assert.equal(api.refreshRuntimeConfig(), false, "nothing to write before listening");
+    assert.equal(await api.startHttpServer(), 23334);
+    assert.deepEqual(writes.map((w) => [w.port, w.options.mirrorDirs]), [[23334, ["/Users/me/.claude/agenthalo"]]]);
+    mirrorDirs.push("/Users/me/.codex/agenthalo");
+    assert.equal(api.refreshRuntimeConfig(), true);
+    assert.deepEqual(writes[1].options.mirrorDirs, mirrorDirs);
+    api.cleanup();
+    assert.deepEqual(clears.map((c) => c.options.mirrorDirs), [mirrorDirs]);
+  });
+});
+
+describe("Codex auto-start gate through the authorized folder", () => {
+  let root;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "agenthalo-codex-gate-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("is written where store Codex hooks read it", () => {
+    const home = path.join(root, "home");
+    const containerGate = path.join(root, "container", ".clawd", "codex-auto-start.json");
+    const codexExchange = path.join(home, ".codex", "agenthalo");
+    assert.equal(serverConfig.writeCodexAutoStartGate(true, { gatePath: containerGate, mirrorDirs: [codexExchange] }), true);
+    assert.equal(serverConfig.readCodexAutoStartGate({ env: STORE_ENV, homeDir: home }), true);
+    assert.equal(serverConfig.readCodexAutoStartGate({ env: {}, homeDir: home }), false, "the real ~/.clawd has no gate");
+    // CODEX_HOME moves the folder for the hook as it does for Codex.
+    const moved = path.join(root, "codex-home");
+    serverConfig.writeCodexAutoStartGate(true, { gatePath: containerGate, mirrorDirs: [path.join(moved, "agenthalo")] });
+    assert.equal(serverConfig.readCodexAutoStartGate({ env: { ...STORE_ENV, CODEX_HOME: moved }, homeDir: home }), true);
+    serverConfig.writeCodexAutoStartGate(false, { gatePath: containerGate, mirrorDirs: [codexExchange] });
+    assert.equal(serverConfig.readCodexAutoStartGate({ env: STORE_ENV, homeDir: home }), false);
+  });
+});
+
+describe("Claude recovery leases in the store build", () => {
+  it("are kept in the Claude folder the app was allowed to read", () => {
+    assert.equal(
+      recoveryLease.getRecoveryDir({ env: { ...STORE_ENV, CLAUDE_CONFIG_DIR: "/Users/me/.claude" } }),
+      path.join("/Users/me/.claude", "agenthalo", recoveryLease.LEASE_DIR_NAME)
+    );
+    assert.equal(
+      recoveryLease.getRecoveryDir({ env: STORE_ENV, homeDir: "/Users/me" }),
+      path.join("/Users/me", ".claude", "agenthalo", recoveryLease.LEASE_DIR_NAME)
+    );
+    assert.equal(
+      recoveryLease.getRecoveryDir({ env: {} }),
+      path.join(os.homedir(), ".clawd", recoveryLease.LEASE_DIR_NAME)
+    );
+  });
+
+  it("are the ones the app restores from", () => {
+    const main = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
+    assert.match(main, /\.\.\.\(process\.mas \? storeRecoveryLeaseOptions\(\) : \{\}\)/);
+    assert.match(main, /exchangeDir\("claude-code"\)[\s\S]{0,200}LEASE_DIR_NAME/);
+  });
+});

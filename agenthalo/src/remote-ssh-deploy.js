@@ -56,6 +56,7 @@ const { quoteForPosixShellArg } = require("./remote-ssh-quote");
 // tombstone because it cannot participate in profile identity transactions.
 const HOOK_FILES = [
   "server-config.js",
+  "store-exchange.js",
   "json-utils.js",
   "shared-process.js",
   "pid-cache.js",

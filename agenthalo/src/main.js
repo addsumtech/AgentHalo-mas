@@ -327,8 +327,17 @@ const _evaluateCodexAutoStartGate = createCodexAutoStartGateEvaluator({
   authorityLost: _codexAutoStartAuthorityLost,
 });
 
+// Last gate value written, so authorizing ~/.codex later can copy it there.
+let _codexAutoStartGateValue = null;
+
 function _persistCodexAutoStartGate(enabled) {
-  return writeCodexAutoStartGate(enabled === true);
+  _codexAutoStartGateValue = enabled === true;
+  // Store build: Codex hooks read the gate from the authorized Codex folder
+  // (see hooks/store-exchange.js), not the container's ~/.clawd.
+  const codexExchangeDir = process.mas ? require("./sandbox-access").exchangeDir("codex") : null;
+  return writeCodexAutoStartGate(_codexAutoStartGateValue, {
+    mirrorDirs: codexExchangeDir ? [codexExchangeDir] : [],
+  });
 }
 
 function _syncCodexAutoStartGate(snapshot, source) {
@@ -474,7 +483,14 @@ const _settingsController = createSettingsController({
       }
       const sandboxAccess = require("./sandbox-access");
       const result = await sandboxAccess.authorize(id, { ...options, parentWindow: getSettingsWindow() });
-      if (result && result.status === "ok") sandboxAccess.applyToolEnvironment();
+      if (result && result.status === "ok") {
+        sandboxAccess.applyToolEnvironment();
+        // Give the new folder the files hooks look for there.
+        _server.refreshRuntimeConfig();
+        if (id === "codex" && _codexAutoStartGateValue !== null) {
+          _persistCodexAutoStartGate(_codexAutoStartGateValue);
+        }
+      }
       return result;
     },
     listAuthorizedConfigDirs: () => {
@@ -2642,11 +2658,21 @@ agentRuntime = createAgentRuntimeMain({
   clearCodexUserInputBubbles: (...args) => clearCodexUserInputBubbles(...args),
 });
 
+// Store build: Claude hooks keep recovery leases in the authorized Claude
+// folder, since the app container's ~/.clawd is out of their reach.
+function storeRecoveryLeaseOptions() {
+  const dir = require("./sandbox-access").exchangeDir("claude-code");
+  return dir ? { recoveryDir: path.join(dir, require("../hooks/session-recovery-lease").LEASE_DIR_NAME) } : {};
+}
+
 // ── HTTP server — delegated to src/server.js ──
 const _serverCtx = {
   // Sandboxed build: Claude writes, checks and watches go to the ~/.claude the
   // user authorized; null (nothing authorized) makes them skip.
   getClaudeHomeDir: () => require("./sandbox-access").authorizedHomeDir("claude-code"),
+  // Its ~/.clawd sits in the app container, so hooks find runtime.json in the
+  // authorized tool folders instead (see hooks/store-exchange.js).
+  getRuntimeMirrorDirs: () => (process.mas ? require("./sandbox-access").exchangeDirs() : []),
   get manageClaudeHooksAutomatically() { return manageClaudeHooksAutomatically; },
   get autoStartWithClaude() { return autoStartWithClaude; },
   get claudeQuotaCollectionEnabled() { return claudeQuotaCollectionEnabled; },
@@ -3579,6 +3605,7 @@ function createWindow() {
   startHttpServer().then((port) => {
     if (port == null) return;
     const restoredSessionIds = restoreSessionsFromRecoveryLeases(_state, {
+      ...(process.mas ? storeRecoveryLeaseOptions() : {}),
       isAgentEnabled: (agentId) => (
         _runtimeAgentGate.isAgentEnabled(agentId)
         && _runtimeAgentGate.isAgentIntegrationInstalled(agentId)

@@ -6,35 +6,11 @@ const path = require("path");
 
 const STORE_NAME = "authorized-dirs.json";
 
-const AGENT_CONFIG_DIRS = Object.freeze({
-  "claude-code": { folder: ".claude", label: "~/.claude" },
-  codex: { folder: ".codex", label: "~/.codex" },
-  "cursor-agent": { folder: ".cursor", label: "~/.cursor" },
-  "gemini-cli": { folder: ".gemini", label: "~/.gemini" },
-  "antigravity-cli": { folder: ".gemini", label: "~/.gemini" },
-  "copilot-cli": { folder: ".copilot", label: "~/.copilot" },
-  codebuddy: { folder: ".codebuddy", label: "~/.codebuddy" },
-  // Folder names below follow what each installer writes: WorkBuddy AI keeps
-  // its settings in ~/.workbuddy-ai, Kiro in ~/.kiro/agents, and the opencode
-  // family under ~/.config.
-  workbuddy: { folder: ".workbuddy-ai", altFolders: [".workbuddy"], label: "~/.workbuddy-ai" },
-  "kiro-cli": { folder: ".kiro", label: "~/.kiro" },
-  "kimi-cli": { folder: ".kimi", label: "~/.kimi" },
-  "qwen-code": { folder: ".qwen", label: "~/.qwen" },
-  zcode: { folder: ".zcode", label: "~/.zcode" },
-  codewhale: { folder: ".codewhale", label: "~/.codewhale" },
-  "deepseek-harness": { folder: ".dsh", label: "~/.dsh" },
-  opencode: { folder: ".config/opencode", label: "~/.config/opencode" },
-  mimocode: { folder: ".config/mimocode", label: "~/.config/mimocode" },
-  pi: { folder: ".pi", label: "~/.pi" },
-  openclaw: { folder: ".openclaw", label: "~/.openclaw" },
-  hermes: { folder: ".hermes", label: "~/.hermes" },
-  qoder: { folder: ".qoder", label: "~/.qoder" },
-  reasonix: { folder: ".reasonix", label: "~/.reasonix" },
-  qoderwork: { folder: ".qoderwork", label: "~/.qoderwork" },
-  traecode: { folder: ".trae-cn", label: "~/.trae-cn" },
-  qwenwork: { folder: ".QwenWorkCN", label: "~/.QwenWorkCN" },
-});
+const storeExchange = require("../hooks/store-exchange");
+
+// The table lives with the hooks, which need the same folder names to find
+// the files this app shares with them.
+const AGENT_CONFIG_DIRS = storeExchange.TOOL_CONFIG_FOLDERS;
 
 const FALLBACK_TEXT = Object.freeze({
   sandboxPickFolderTitle: "Choose {folder}",
@@ -120,15 +96,9 @@ function writeStore(store, options = {}) {
   fs.renameSync(tmp, storePath);
 }
 
-function folderSegments(folder) {
-  return String(folder).split("/").filter(Boolean);
-}
-
-// The main folder first, then any older layout the installer still accepts
-// (legacy WorkBuddy keeps settings in ~/.workbuddy).
-function acceptedFolders(spec) {
-  return [spec.folder, ...(Array.isArray(spec.altFolders) ? spec.altFolders : [])];
-}
+// acceptedFolders lists the main folder first, then any older layout the
+// installer still accepts (legacy WorkBuddy keeps settings in ~/.workbuddy).
+const { acceptedFolders, folderSegments } = storeExchange;
 
 // Returns the home that contains the tool folder when selectedPath is that
 // folder (e.g. /Users/me/.config/opencode -> /Users/me), else null. Names are
@@ -384,6 +354,24 @@ async function authorize(agentId, options = {}) {
   return { status: "ok", ...record, reused: false };
 }
 
+// Where the app and its hooks exchange files that normally live in ~/.clawd
+// (see hooks/store-exchange.js), or null when the tool folder is not
+// authorized or its bookmark went stale.
+function exchangeDir(agentId, options = {}) {
+  const record = getAuthorized(agentId, options);
+  if (!record || record.stale) return null;
+  return storeExchange.authorizedExchangeDir(agentId, record, options);
+}
+
+function exchangeDirs(options = {}) {
+  const dirs = [];
+  for (const agentId of Object.keys(readStore(options))) {
+    const dir = exchangeDir(agentId, options);
+    if (dir && !dirs.includes(dir)) dirs.push(dir);
+  }
+  return dirs;
+}
+
 function requireAuthorized(agentId, options = {}) {
   const record = getAuthorized(agentId, options);
   if (!record || record.stale) {
@@ -421,4 +409,6 @@ module.exports = {
   applyToolEnvironment,
   authorize,
   requireAuthorized,
+  exchangeDir,
+  exchangeDirs,
 };

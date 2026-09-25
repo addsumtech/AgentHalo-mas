@@ -2,6 +2,7 @@ const fs = require("fs");
 const http = require("http");
 const os = require("os");
 const path = require("path");
+const storeExchange = require("./store-exchange");
 
 const CLAWD_SERVER_ID = "clawd-on-desk";
 const CLAWD_SERVER_HEADER = "x-clawd-server";
@@ -50,9 +51,20 @@ function defaultCodexAutoStartGatePath(options = {}) {
   return path.join(homeDir, ".clawd", CODEX_AUTO_START_GATE_FILENAME);
 }
 
+// Store hooks read the gate the sandboxed app mirrors into the authorized
+// Codex folder; its ~/.clawd copy sits inside the app container.
+function hookCodexAutoStartGatePath(options = {}) {
+  if (options.gatePath) return options.gatePath;
+  if (storeExchange.isStoreHook(options.env || process.env)) {
+    const dir = storeExchange.toolExchangeDir("codex", options);
+    if (dir) return path.join(dir, CODEX_AUTO_START_GATE_FILENAME);
+  }
+  return defaultCodexAutoStartGatePath(options);
+}
+
 function readCodexAutoStartGate(options = {}) {
   const fsApi = options.fs || fs;
-  const filePath = options.gatePath || defaultCodexAutoStartGatePath(options);
+  const filePath = hookCodexAutoStartGatePath(options);
   try {
     const parsed = JSON.parse(fsApi.readFileSync(filePath, "utf8"));
     return !!(
@@ -66,26 +78,48 @@ function readCodexAutoStartGate(options = {}) {
   }
 }
 
-function writeCodexAutoStartGate(enabled, options = {}) {
-  if (typeof enabled !== "boolean") return false;
+// Write-to-temp-then-rename, so a reader never sees a half-written file.
+// Boolean contract: never throws.
+function writeFileAtomic(filePath, body, options = {}) {
   const fsApi = options.fs || fs;
-  const filePath = options.gatePath || defaultCodexAutoStartGatePath(options);
   const dir = path.dirname(filePath);
-  const tmpPath = path.join(dir, `.codex-auto-start.${process.pid}.${Date.now()}.tmp`);
-  const body = JSON.stringify({
-    app: CLAWD_SERVER_ID,
-    version: CODEX_AUTO_START_GATE_VERSION,
-    enabled,
-  }, null, 2);
+  const tmpPath = path.join(dir, `.${options.tmpPrefix || "tmp"}.${process.pid}.${Date.now()}.tmp`);
   try {
-    fsApi.mkdirSync(dir, { recursive: true });
-    fsApi.writeFileSync(tmpPath, body, "utf8");
+    fsApi.mkdirSync(dir, options.dirMode ? { recursive: true, mode: options.dirMode } : { recursive: true });
+    fsApi.writeFileSync(tmpPath, body, options.fileMode ? { encoding: "utf8", mode: options.fileMode } : "utf8");
     fsApi.renameSync(tmpPath, filePath);
     return true;
   } catch {
     try { fsApi.unlinkSync(tmpPath); } catch {}
     return false;
   }
+}
+
+function mirrorDirList(options = {}) {
+  return Array.isArray(options.mirrorDirs)
+    ? options.mirrorDirs.filter((dir) => typeof dir === "string" && dir)
+    : [];
+}
+
+// options.mirrorDirs: the sandboxed store app also writes the gate into the
+// authorized Codex folder, where its hooks look (see store-exchange.js).
+// The result reports the primary file; mirrors are best effort.
+function writeCodexAutoStartGate(enabled, options = {}) {
+  if (typeof enabled !== "boolean") return false;
+  const filePath = options.gatePath || defaultCodexAutoStartGatePath(options);
+  const body = JSON.stringify({
+    app: CLAWD_SERVER_ID,
+    version: CODEX_AUTO_START_GATE_VERSION,
+    enabled,
+  }, null, 2);
+  const written = writeFileAtomic(filePath, body, { fs: options.fs, tmpPrefix: "codex-auto-start" });
+  for (const dir of mirrorDirList(options)) {
+    writeFileAtomic(path.join(dir, CODEX_AUTO_START_GATE_FILENAME), body, {
+      fs: options.fs,
+      tmpPrefix: "codex-auto-start",
+    });
+  }
+  return written;
 }
 
 function resolveCoLocatedPath(filename, options = {}, optionKey, envKey) {
@@ -343,7 +377,28 @@ function normalizeWindowsProcessChainConfig(value) {
 // discriminated result rather than throwing; `reason` is diagnostic only.
 function parseRuntimeConfig(options = {}) {
   const readFileSync = options.readFileSync || fs.readFileSync;
+  if (!options.runtimeConfigPath && storeExchange.isStoreHook(options.env || process.env)) {
+    return parseStoreRuntimeConfig(options, readFileSync);
+  }
   const filePath = options.runtimeConfigPath || defaultRuntimeConfigPath(options);
+  return parseRuntimeConfigFile(filePath, readFileSync);
+}
+
+// Store hooks: the sandboxed app mirrors runtime.json into every authorized
+// tool folder (see store-exchange.js), and its own ~/.clawd copy sits in the
+// app container. Every live copy is identical; a copy whose owner has exited
+// is residue from a crash and would aim state at a port nobody owns, so only
+// a copy with a live ownerPid counts. Otherwise hooks scan SERVER_PORTS.
+function parseStoreRuntimeConfig(options, readFileSync) {
+  const alive = typeof options.processAlive === "function" ? options.processAlive : storeExchange.pidAlive;
+  for (const dir of storeExchange.hookExchangeDirs(options)) {
+    const parsed = parseRuntimeConfigFile(path.join(dir, "runtime.json"), readFileSync);
+    if (parsed.ok && parsed.ownerPid && alive(parsed.ownerPid)) return parsed;
+  }
+  return { ok: false, reason: RUNTIME_REASON_MISSING, port: null, ownerPid: null };
+}
+
+function parseRuntimeConfigFile(filePath, readFileSync) {
   let raw;
   try {
     raw = JSON.parse(readFileSync(filePath, "utf8"));
@@ -430,28 +485,25 @@ function writeRuntimeConfig(port, options = {}) {
   const safePort = normalizePort(port);
   if (!safePort) return false;
 
-  const fsApi = options.fs || fs;
   const filePath = options.runtimeConfigPath || defaultRuntimeConfigPath(options);
   const ownerPid = normalizeOwnerPid(options.ownerPid) || process.pid;
-  const dir = path.dirname(filePath);
-  const tmpPath = path.join(dir, `.runtime.${process.pid}.${Date.now()}.tmp`);
   const runtimeBody = { app: CLAWD_SERVER_ID, port: safePort, ownerPid };
   const windowsProcessChain = normalizeWindowsProcessChainConfig(options.windowsProcessChain);
   if (windowsProcessChain) runtimeBody.windowsProcessChain = windowsProcessChain;
   const body = JSON.stringify(runtimeBody, null, 2);
-  try {
-    fsApi.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    // Permission-capable plugins use this file to avoid disclosing their
-    // reverse-bridge bearer token to arbitrary listeners during a port scan.
-    // Keep the replacement owner-only on POSIX; Windows ignores this mode and
-    // relies on the user's profile ACL.
-    fsApi.writeFileSync(tmpPath, body, { encoding: "utf8", mode: 0o600 });
-    fsApi.renameSync(tmpPath, filePath);
-    return true;
-  } catch {
-    try { fsApi.unlinkSync(tmpPath); } catch {}
-    return false;
+  // Permission-capable plugins use this file to avoid disclosing their
+  // reverse-bridge bearer token to arbitrary listeners during a port scan.
+  // Keep the replacement owner-only on POSIX; Windows ignores this mode and
+  // relies on the user's profile ACL.
+  const fileOptions = { fs: options.fs, tmpPrefix: "runtime", dirMode: 0o700, fileMode: 0o600 };
+  const written = writeFileAtomic(filePath, body, fileOptions);
+  // options.mirrorDirs: the sandboxed store app also writes the file into
+  // each authorized tool folder, where its hooks look (see
+  // store-exchange.js). The result reports the primary file.
+  for (const dir of mirrorDirList(options)) {
+    writeFileAtomic(path.join(dir, "runtime.json"), body, fileOptions);
   }
+  return written;
 }
 
 // Owner-guarded (#681 review P2-2). Two live instances share this ONE file —
@@ -467,8 +519,13 @@ function writeRuntimeConfig(port, options = {}) {
 // probe fails it) and the next start overwrites it — not worth coupling this
 // module to a kill(pid,0) helper it otherwise never needs.
 function clearRuntimeConfig(filePath, options = {}) {
-  const targetPath = filePath || defaultRuntimeConfigPath(options);
   const ownPid = normalizeOwnerPid(options.ownerPid) || process.pid;
+  const cleared = clearOwnRuntimeFile(filePath || defaultRuntimeConfigPath(options), ownPid);
+  for (const dir of mirrorDirList(options)) clearOwnRuntimeFile(path.join(dir, "runtime.json"), ownPid);
+  return cleared;
+}
+
+function clearOwnRuntimeFile(targetPath, ownPid) {
   try {
     const raw = JSON.parse(fs.readFileSync(targetPath, "utf8"));
     const filePid = normalizeOwnerPid(raw && raw.ownerPid);

@@ -7,6 +7,7 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const { writeJsonAtomic } = require("./json-utils");
 const { getClaudeStopDisposition } = require("./claude-stop-disposition");
+const storeExchange = require("./store-exchange");
 
 const LEASE_VERSION = 1;
 const LEASE_DIR_NAME = "session-recovery-v1";
@@ -91,6 +92,12 @@ function normalizeTitle(value) {
 function getRecoveryDir(options = {}) {
   if (typeof options.recoveryDir === "string" && options.recoveryDir) {
     return path.resolve(options.recoveryDir);
+  }
+  // The sandboxed store app cannot read the real ~/.clawd, so store hooks keep
+  // leases in the authorized Claude folder instead (see store-exchange.js).
+  if (storeExchange.isStoreHook(options.env || process.env)) {
+    const dir = storeExchange.toolExchangeDir("claude-code", options);
+    if (dir) return path.join(dir, LEASE_DIR_NAME);
   }
   return path.join(os.homedir(), ".clawd", LEASE_DIR_NAME);
 }
@@ -648,6 +655,7 @@ function loadActiveRecoveryLeases(options = {}) {
 
 module.exports = {
   LEASE_VERSION,
+  LEASE_DIR_NAME,
   LEASE_FILE_PREFIX,
   MAX_LEASE_AGE_MS,
   MAX_LEASE_FILES,

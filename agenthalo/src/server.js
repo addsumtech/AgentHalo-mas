@@ -133,8 +133,28 @@ function resolveWindowsProcessMetadata(request) {
   }
   return windowsProcessMetadataResolver(request);
 }
+// Store build: extra folders that get a copy of runtime.json, because the
+// app's sandboxed ~/.clawd is invisible to hooks (see hooks/store-exchange.js).
+function runtimeMirrorDirs() {
+  if (typeof ctx.getRuntimeMirrorDirs !== "function") return [];
+  try {
+    const dirs = ctx.getRuntimeMirrorDirs();
+    return Array.isArray(dirs) ? dirs : [];
+  } catch {
+    return [];
+  }
+}
 function writeCurrentRuntimeConfig(port) {
-  return writeRuntimeConfigFn(port, { windowsProcessChain: windowsProcessChainRuntime });
+  return writeRuntimeConfigFn(port, {
+    windowsProcessChain: windowsProcessChainRuntime,
+    mirrorDirs: runtimeMirrorDirs(),
+  });
+}
+// Rewrites runtime.json and its mirrors, e.g. after the user authorizes
+// another tool folder. No-op until the server is listening.
+function refreshRuntimeConfig() {
+  if (!activeServerPort) return false;
+  return writeCurrentRuntimeConfig(activeServerPort);
 }
 // #681: where the runtime file lives is a pure expression — answering it must
 // not read the file, probe a PID, or touch any of the seams above. Callers that
@@ -962,13 +982,14 @@ function cleanup() {
   // this point can observe it anyway.
   stopClaudeSettingsWatcher();
   claudeHookOperations.dispose();
-  clearRuntimeConfigFn();
+  clearRuntimeConfigFn(undefined, { mirrorDirs: runtimeMirrorDirs() });
   clearClaudeHookGuardStatus();
   if (httpServer) httpServer.close();
 }
 
 return {
   startHttpServer,
+  refreshRuntimeConfig,
   openRemoteSshIngress,
   getHookServerPort,
   getRuntimeStatus,

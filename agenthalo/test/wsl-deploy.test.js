@@ -168,7 +168,7 @@ describe("wsl-deploy", () => {
   });
 
   describe("Hermes exact WSL payload", () => {
-    it("contains exactly the audited six files as Buffers", () => {
+    it("contains exactly the audited files as Buffers", () => {
       const entries = collectAgentWslFiles(HOOKS_DIR, "hermes");
       assert.deepStrictEqual(entries.map((entry) => entry.relativePath), [...HERMES_WSL_FILES]);
       assert.ok(entries.every((entry) => Buffer.isBuffer(entry.content)));

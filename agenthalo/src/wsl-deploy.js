@@ -19,6 +19,7 @@ const HERMES_WSL_FILES = Object.freeze([
   "json-utils.js",
   "wsl-connectivity-probe.js",
   "server-config.js",
+  "store-exchange.js",
   "hermes-plugin/plugin.yaml",
   "hermes-plugin/__init__.py",
 ]);
