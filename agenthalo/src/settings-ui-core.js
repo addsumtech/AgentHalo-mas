@@ -101,6 +101,12 @@
     nextTransientUiSeq: 1,
   };
 
+  function readWebBridgeStoreUrl() {
+    const api = typeof window !== "undefined" ? window.settingsAPI : null;
+    const value = api && api.webBridgeStoreUrl;
+    return typeof value === "string" && /^https:\/\/\S+$/i.test(value) ? value : "";
+  }
+
   const runtime = {
     agentMetadata: null,
     agentInstallationHints: null,
@@ -126,9 +132,10 @@
     animOverridesSubtab: "map",
     settingsTabScrollPositions: new Map(),
     persistedSettingsTab: "general",
-    // Empty until the Chrome Web Store listing is live; the Agents tab learns
-    // it from the web-bridge status report and promotes "Add to Chrome" then.
-    webBridgeStoreUrl: "",
+    // Empty until the Chrome Web Store listing is live (web-bridge-install.js
+    // CHROME_WEB_STORE_URL, passed in by the preload). The Agents tab card and
+    // the About row for the browser extension only exist when it is set.
+    webBridgeStoreUrl: readWebBridgeStoreUrl(),
     // null = not chosen yet; the Agents tab resolves it from what is connected.
     agentsSubtab: null,
     agentsUnavailableQuery: "",

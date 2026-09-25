@@ -13,7 +13,6 @@
     "audit:assets": "node scripts/audit-repository-assets.js",
     "audit:native-package": "node scripts/audit-packaged-native.js",
     "verify:updater-metadata": "node scripts/verify-updater-metadata.js",
-    "verify:winget-arch": "node scripts/verify-winget-arch-contract.js",
     "verify:release": "node scripts/verify-release-version.js && node scripts/verify-release-contributors.js",
     "create-theme": "node scripts/create-theme.js",
     "export-agent-icons": "node scripts/export-agent-icons.js",
@@ -76,8 +75,7 @@
       {
         "name": "AgentHalo Import Protocol",
         "schemes": [
-          "agenthalo",
-          "clawd"
+          "agenthalo"
         ]
       }
     ],
@@ -99,8 +97,7 @@
       "category": "public.app-category.productivity",
       "extendInfo": {
         "LSUIElement": true,
-        "NSAppleEventsUsageDescription": "AgentHalo switches to the browser tab or terminal associated with the task you click.",
-        "NSDownloadsFolderUsageDescription": "AgentHalo only writes hooks after you choose a tool config folder."
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "files": [
@@ -110,22 +107,19 @@
       "assets/icon.png",
       "assets/icons/**/*",
       "assets/icons/agents/**/*",
-      "assets/svg/**/*",
       "assets/accessories/**/*",
+      "!assets/accessories/cigarette.svg",
       "assets/sounds/**/*",
       "assets/dock-icon.png",
       "assets/tray-icon*.png",
       "hooks/**/*",
-      "extensions/**/*",
       "agents/**/*",
       "themes/**/*",
       "pwa/**/*"
     ],
     "asarUnpack": [
-      "assets/svg/**/*",
       "assets/accessories/**/*",
       "hooks/**/*",
-      "extensions/**/*",
       "agents/**/*",
       "themes/**/*",
       "node_modules/jsonc-parser/**/*"

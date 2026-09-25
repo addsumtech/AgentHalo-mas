@@ -4,11 +4,17 @@ const defaultFs = require("fs");
 const defaultPath = require("path");
 const { pathToFileURL: defaultPathToFileURL } = require("url");
 
+// Built-in themes ship their own assets under themes/<id>/assets. When no theme
+// is active the bundled default theme's assets are the fallback; the upstream
+// shared assets/svg folder (Clawd artwork) is not part of the store package.
+const DEFAULT_THEME_ID = "halo";
+const DEFAULT_RENDERER_ASSETS_PATH = `../themes/${DEFAULT_THEME_ID}/assets`;
+
 function createThemeContext(theme, options = {}) {
   const fs = options.fs || defaultFs;
   const path = options.path || defaultPath;
   const pathToFileURL = options.pathToFileURL || defaultPathToFileURL;
-  const assetsSvgDir = options.assetsSvgDir || null;
+  const defaultAssetsDir = options.defaultAssetsDir || null;
   const assetsSoundsDir = options.assetsSoundsDir || null;
 
   function buildFileUrl(absPath) {
@@ -21,12 +27,10 @@ function createThemeContext(theme, options = {}) {
 
   function resolveAssetPath(filename) {
     const safeFilename = path.basename(filename);
-    if (!theme) return path.join(assetsSvgDir, safeFilename);
+    if (!theme) return defaultAssetsDir ? path.join(defaultAssetsDir, safeFilename) : null;
 
     if (theme._builtin) {
-      const themeAsset = path.join(theme._themeDir, "assets", safeFilename);
-      if (fs.existsSync(themeAsset)) return themeAsset;
-      return path.join(assetsSvgDir, safeFilename);
+      return path.join(theme._themeDir, "assets", safeFilename);
     }
 
     if (safeFilename.endsWith(".svg")) {
@@ -36,15 +40,9 @@ function createThemeContext(theme, options = {}) {
   }
 
   function getRendererAssetsPath() {
-    if (!theme) return "../assets/svg";
-    if (theme._builtin) {
-      const themeAssetsDir = path.join(theme._themeDir, "assets");
-      if (fs.existsSync(themeAssetsDir)) {
-        return `../themes/${theme._id}/assets`;
-      }
-      return "../assets/svg";
-    }
-    return theme._assetsFileUrl || "../assets/svg";
+    if (!theme) return DEFAULT_RENDERER_ASSETS_PATH;
+    if (theme._builtin) return `../themes/${theme._id}/assets`;
+    return theme._assetsFileUrl || DEFAULT_RENDERER_ASSETS_PATH;
   }
 
   function getRendererSourceAssetsPath() {
@@ -162,3 +160,5 @@ function createThemeContext(theme, options = {}) {
 }
 
 module.exports = createThemeContext;
+module.exports.DEFAULT_THEME_ID = DEFAULT_THEME_ID;
+module.exports.DEFAULT_RENDERER_ASSETS_PATH = DEFAULT_RENDERER_ASSETS_PATH;

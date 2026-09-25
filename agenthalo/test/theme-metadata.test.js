@@ -69,21 +69,24 @@ function writeTheme(baseDir, id, json, assets = {}) {
 }
 
 describe("theme metadata preview helpers", () => {
-  it("uses basename-only preview fallback and built-in central assets", () => {
+  it("uses basename-only previews from the theme's own assets, never a shared folder", () => {
     const { builtinThemesDir, assetsSvgDir } = makeTempRoot();
     const themeDir = writeTheme(
       builtinThemesDir,
       "builtin",
-      validThemeJson({ name: "Builtin", preview: "../central-preview.svg" })
+      validThemeJson({ name: "Builtin", preview: "../local-preview.svg" }),
+      { "local-preview.svg": "<svg/>" }
     );
     fs.writeFileSync(path.join(assetsSvgDir, "central-preview.svg"), "<svg/>", "utf8");
 
-    const url = buildPreviewUrl(validThemeJson({ preview: "../central-preview.svg" }), themeDir, true, {
+    const url = buildPreviewUrl(validThemeJson({ preview: "../local-preview.svg" }), themeDir, true);
+    assert.ok(url && url.includes("local-preview.svg"));
+    assert.ok(!url.includes(".."));
+
+    const central = buildPreviewUrl(validThemeJson({ preview: "central-preview.svg" }), themeDir, true, {
       assetsSvgDir,
     });
-
-    assert.ok(url && url.includes("central-preview.svg"));
-    assert.ok(!url.includes(".."));
+    assert.strictEqual(central, null);
   });
 
   it("falls back from preview to states.idle[0] for theme-local assets", () => {

@@ -5348,19 +5348,9 @@ h1, h2, h3, h4, strong, b { font-weight: 500; }
 .web-bridge-content h2 { margin: 0 0 6px; font-size: 14px; font-weight: 500; }
 .web-bridge-description { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
 .web-bridge-install { flex-shrink: 0; }
-.web-bridge-download { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-height: 34px; text-decoration: none; }
-.soft-btn.accent.web-bridge-download:hover { background: color-mix(in srgb, var(--accent) 88%, var(--text-primary)); border-color: var(--accent); }
 .web-bridge-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; margin-top: 10px; }
 .web-bridge-actions .settings-footer-link { padding: 3px 0; font-size: 12px; text-decoration: none; }
 .web-bridge-actions .settings-footer-link:hover { background: transparent; text-decoration: underline; }
-.web-bridge-setup-panel { margin-top: 16px; padding: 16px 18px; border-radius: 8px; background: color-mix(in srgb, var(--bg) 65%, var(--panel-bg)); }
-.web-bridge-requirements { margin: 0 0 14px; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
-.web-bridge-steps { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.7; }
-.web-bridge-steps li + li { margin-top: 12px; }
-.web-bridge-steps li::marker { color: var(--text-secondary); }
-.web-bridge-prepare-actions { display: flex; align-items: center; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
-.web-bridge-browser { min-width: 100px; padding: 8px 10px; font: inherit; color: var(--text-primary); background: var(--panel-bg); border: 1px solid var(--border); border-radius: 7px; }
-.web-bridge-path { display: block; margin-top: 8px; padding: 8px 10px; background: var(--panel-bg); border: 1px solid var(--row-border); border-radius: 6px; user-select: text; overflow-wrap: anywhere; }
 .web-bridge-status, .web-bridge-details { font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; color: var(--text-secondary); }
 .web-bridge-status:empty { display: none; }
 .web-bridge-status p { margin: 8px 0 0; }
@@ -5375,7 +5365,6 @@ h1, h2, h3, h4, strong, b { font-weight: 500; }
 .web-bridge-card :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (max-width: 700px) {
   .web-bridge-header { align-items: flex-start; flex-direction: column; gap: 12px; }
-  .web-bridge-setup-panel { padding: 14px; }
 }
 
 /* Modern companion surfaces: quiet chrome, clear type, consistent controls. */

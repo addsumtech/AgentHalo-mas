@@ -16,7 +16,6 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const THEMES_DIR = path.join(__dirname, "..", "themes");
-const SHARED_SVG_DIR = path.join(__dirname, "..", "assets", "svg");
 
 function loadBuiltinThemes() {
   return fs.readdirSync(THEMES_DIR, { withFileTypes: true })
@@ -51,9 +50,9 @@ describe("builtin theme roam asset config", () => {
       const roam = cfg.states && cfg.states.roam;
       if (!Array.isArray(roam)) continue;
       for (const file of roam) {
+        // Built-in themes ship every file they reference in their own assets.
         const inTheme = fs.existsSync(path.join(dir, "assets", file));
-        const inShared = fs.existsSync(path.join(SHARED_SVG_DIR, file));
-        assert.ok(inTheme || inShared, `${id}: states.roam file "${file}" not found in theme assets or shared assets/svg`);
+        assert.ok(inTheme, `${id}: states.roam file "${file}" not found in theme assets`);
       }
     }
   });

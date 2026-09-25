@@ -1,8 +1,8 @@
 "use strict";
 
-// AgentHalo is maintained and installed from its own source repository.
-// Preserve the runtime interface without creating timers, network requests,
-// upstream release prompts, installers, or install-on-quit handlers.
+// The Mac App Store delivers AgentHalo updates. Preserve the runtime interface
+// without creating timers, network requests, upstream release prompts,
+// installers, or install-on-quit handlers.
 function initUpdater() {
   const snapshot = () => ({ state: "idle", status: "manual-only" });
   const noop = () => {};

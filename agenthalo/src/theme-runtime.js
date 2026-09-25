@@ -2,6 +2,7 @@
 
 const defaultFs = require("fs");
 const defaultPath = require("path");
+const { DEFAULT_RENDERER_ASSETS_PATH } = require("./theme-context");
 
 // Design invariant: this closure is the only active-theme owner. theme-loader
 // stays a stateless loader; legacy active facades must delegate here.
@@ -100,7 +101,7 @@ function createThemeRuntime(options = {}) {
   }
 
   function getRendererAssetsPath() {
-    return activeThemeContext ? activeThemeContext.getRendererAssetsPath() : "../assets/svg";
+    return activeThemeContext ? activeThemeContext.getRendererAssetsPath() : DEFAULT_RENDERER_ASSETS_PATH;
   }
 
   function getRendererSourceAssetsPath() {

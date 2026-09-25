@@ -160,7 +160,9 @@ describe("accessory-aware hit boxes", () => {
 
     assert.deepStrictEqual(animated.filter((file) => !measured[file]), []);
     assert.deepStrictEqual(Object.keys(measured).filter((file) => !animated.includes(file)), []);
-    assert.deepStrictEqual(PET_MOUTH_ACCESSORY_IDS, ["none", "cigarette"]);
+    // The store catalog has no mouth accessory; the measured envelopes stay for
+    // themes that declare mouth attachments.
+    assert.deepStrictEqual(PET_MOUTH_ACCESSORY_IDS, ["none"]);
   });
 
   it("unions head and mouth hit geometry without reviving hidden slots", () => {

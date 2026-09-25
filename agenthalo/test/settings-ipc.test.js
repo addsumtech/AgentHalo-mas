@@ -252,7 +252,6 @@ function createHarness(overrides = {}) {
       calls.push(["showTutorial"]);
       return { status: "ok" };
     }),
-    aboutHeroSvgPath: overrides.aboutHeroSvgPath || path.join(__dirname, "missing-about-hero.svg"),
     getLanWsServer: overrides.getLanWsServer || (() => null),
     now: overrides.now || (() => 12345),
     saveFeishuApproverByEmail: overrides.saveFeishuApproverByEmail || (async ({ email, signal }) => {
@@ -927,12 +926,9 @@ test("settings IPC previews sound only when not muted or in DND", async () => {
 test("settings IPC serves agent/about/update/external and remove-theme dialog helpers", async () => {
   const root = makeTempDir();
   try {
-    const heroSvgPath = path.join(root, "hero.svg");
-    fs.writeFileSync(heroSvgPath, "<svg id=\"hero\"></svg>", "utf8");
     let messageBoxParent = null;
     let messageBoxOptions = null;
     const { ipcMain, calls, settingsWindow } = createHarness({
-      aboutHeroSvgPath: heroSvgPath,
       getLang: () => "en",
       dialog: {
         showOpenDialog: async () => ({ canceled: true }),
@@ -1031,8 +1027,11 @@ test("settings IPC serves agent/about/update/external and remove-theme dialog he
     ]);
     assert.deepStrictEqual(await ipcMain.invoke("settings:get-about-info"), {
       version: "1.2.3",
-      repoUrl: "https://github.com/addsumtech/AgentHalo",
-      issuesUrl: "https://github.com/addsumtech/AgentHalo/issues",
+      // The store binary's AGPL source is AgentHalo-mas, not the full repo.
+      repoUrl: "https://github.com/addsumtech/AgentHalo-mas",
+      repoLabel: "addsumtech / AgentHalo-mas",
+      issuesUrl: "https://github.com/addsumtech/AgentHalo-mas/issues",
+      licenseUrl: "https://github.com/addsumtech/AgentHalo-mas/blob/main/agenthalo/LICENSE",
       upstreamUrl: "https://github.com/rullerzhou-afk/clawd-on-desk",
       license: "AGPL-3.0-only",
       copyright: "\u00a9 2026 Addsum",

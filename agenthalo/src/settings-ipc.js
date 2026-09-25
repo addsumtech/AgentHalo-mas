@@ -886,10 +886,13 @@ function registerSettingsIpc(options = {}) {
   });
 
   handle("settings:get-about-info", () => {
+    // The store binary's AGPL source is the AgentHalo-mas repository.
     return {
       version: app.getVersion(),
-      repoUrl: "https://github.com/addsumtech/AgentHalo",
-      issuesUrl: "https://github.com/addsumtech/AgentHalo/issues",
+      repoUrl: "https://github.com/addsumtech/AgentHalo-mas",
+      repoLabel: "addsumtech / AgentHalo-mas",
+      issuesUrl: "https://github.com/addsumtech/AgentHalo-mas/issues",
+      licenseUrl: "https://github.com/addsumtech/AgentHalo-mas/blob/main/agenthalo/LICENSE",
       upstreamUrl: "https://github.com/rullerzhou-afk/clawd-on-desk",
       license: "AGPL-3.0-only",
       copyright: "\u00a9 2026 Addsum",

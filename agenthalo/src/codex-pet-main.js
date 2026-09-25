@@ -10,7 +10,9 @@ const defaultCodexPetImporter = require("./codex-pet-importer");
 
 const REGISTER_PROTOCOL_DEV_ARG = "--register-protocol";
 const CLAWD_PROTOCOL_SCHEME = "agenthalo";
-const IMPORT_PROTOCOL_SCHEMES = [CLAWD_PROTOCOL_SCHEME, "clawd"];
+// Only agenthalo:// — the upstream clawd:// scheme belongs to Clawd on Desk,
+// and the store build neither registers nor answers it.
+const IMPORT_PROTOCOL_SCHEMES = [CLAWD_PROTOCOL_SCHEME];
 
 function emptyCodexPetSyncSummary(overrides = {}) {
   return {

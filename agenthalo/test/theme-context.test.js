@@ -11,13 +11,13 @@ const createThemeContext = require("../src/theme-context");
 
 function makeRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-theme-context-"));
-  const assetsSvgDir = path.join(root, "assets", "svg");
+  const defaultAssetsDir = path.join(root, "themes", "halo", "assets");
   const assetsSoundsDir = path.join(root, "assets", "sounds");
-  fs.mkdirSync(assetsSvgDir, { recursive: true });
+  fs.mkdirSync(defaultAssetsDir, { recursive: true });
   fs.mkdirSync(assetsSoundsDir, { recursive: true });
   return {
     root,
-    assetsSvgDir,
+    defaultAssetsDir,
     assetsSoundsDir,
     cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
   };
@@ -91,13 +91,14 @@ test("explicit contexts resolve independent external asset paths without active-
   }
 });
 
-test("null theme contexts return loader-compatible defaults", () => {
+test("null theme contexts fall back to the bundled halo theme", () => {
   const fixture = makeRoot();
   try {
     const ctx = createThemeContext(null, fixture);
 
-    assert.strictEqual(ctx.resolveAssetPath("idle.svg"), path.join(fixture.assetsSvgDir, "idle.svg"));
-    assert.strictEqual(ctx.getRendererAssetsPath(), "../assets/svg");
+    assert.strictEqual(createThemeContext.DEFAULT_THEME_ID, "halo");
+    assert.strictEqual(ctx.resolveAssetPath("idle.svg"), path.join(fixture.defaultAssetsDir, "idle.svg"));
+    assert.strictEqual(ctx.getRendererAssetsPath(), "../themes/halo/assets");
     assert.strictEqual(ctx.getRendererSourceAssetsPath(), null);
     assert.strictEqual(ctx.getRendererConfig(), null);
     assert.strictEqual(ctx.getHitRendererConfig(), null);
@@ -108,12 +109,13 @@ test("null theme contexts return loader-compatible defaults", () => {
   }
 });
 
-test("built-in contexts prefer theme-local assets and expose relative renderer paths", () => {
+test("built-in contexts resolve only theme-local assets and expose relative renderer paths", () => {
   const fixture = makeRoot();
   try {
     const themeDir = path.join(fixture.root, "themes", "calico");
     writeFile(path.join(themeDir, "assets", "idle.apng"));
-    writeFile(path.join(fixture.assetsSvgDir, "idle.svg"));
+    // A same-named file elsewhere must not stand in for a missing theme asset.
+    writeFile(path.join(fixture.defaultAssetsDir, "idle.svg"));
 
     const theme = makeTheme({
       _id: "calico",
@@ -125,7 +127,7 @@ test("built-in contexts prefer theme-local assets and expose relative renderer p
     const ctx = createThemeContext(theme, fixture);
 
     assert.strictEqual(ctx.resolveAssetPath("idle.apng"), path.join(themeDir, "assets", "idle.apng"));
-    assert.strictEqual(ctx.resolveAssetPath("idle.svg"), path.join(fixture.assetsSvgDir, "idle.svg"));
+    assert.strictEqual(ctx.resolveAssetPath("idle.svg"), path.join(themeDir, "assets", "idle.svg"));
     assert.strictEqual(ctx.getRendererAssetsPath(), "../themes/calico/assets");
     assert.strictEqual(ctx.getRendererSourceAssetsPath(), "../themes/calico/assets");
     assert.strictEqual(ctx.getRendererConfig().assetsPath, "../themes/calico/assets");
@@ -176,7 +178,7 @@ test("renderer config exposes normalized accessory attachments only for capable 
   }
 });
 
-test("external renderer asset path keeps the legacy default when file URL is absent", () => {
+test("external renderer asset path falls back to the halo theme when file URL is absent", () => {
   const fixture = makeRoot();
   try {
     const theme = makeTheme({
@@ -187,7 +189,7 @@ test("external renderer asset path keeps the legacy default when file URL is abs
     });
     const ctx = createThemeContext(theme, fixture);
 
-    assert.strictEqual(ctx.getRendererAssetsPath(), "../assets/svg");
+    assert.strictEqual(ctx.getRendererAssetsPath(), "../themes/halo/assets");
   } finally {
     fixture.cleanup();
   }

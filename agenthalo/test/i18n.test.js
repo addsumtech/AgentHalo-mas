@@ -544,12 +544,26 @@ describe("i18n locales", () => {
 });
 
 
-describe("public extension download", () => {
-  it("links every locale directly to the published extension archive", () => {
+describe("About update wording in the store build", () => {
+  it("says updates arrive through the Mac App Store in every locale", () => {
+    const strings = loadSettingsI18nStrings();
+    assert.strictEqual(strings.en.aboutManualUpdates, "Updates arrive through the Mac App Store");
+    for (const lang of SUPPORTED_LANGS) {
+      assert.match(strings[lang].aboutManualUpdates, /Mac App Store/, `${lang}.aboutManualUpdates`);
+      assert.doesNotMatch(strings[lang].aboutManualUpdates, /maintainer|维护者|維護者|관리자|メンテナー|mantenedor/i);
+    }
+  });
+});
+
+describe("browser extension in the store build", () => {
+  it("keeps the Chrome Web Store strings but no unpacked-download link in any locale", () => {
     const strings = loadSettingsI18nStrings();
     for (const lang of SUPPORTED_LANGS) {
-      assert.strictEqual(strings[lang].webBridgeDownloadUrl,
-        "https://github.com/addsumtech/AgentHalo/releases/download/web-bridge-v0.3.3/AgentHalo-Web-Bridge.zip");
+      assert.strictEqual(strings[lang].webBridgeDownloadUrl, undefined, `${lang}.webBridgeDownloadUrl`);
+      assert.strictEqual(strings[lang].webBridgeStepLoad, undefined, `${lang}.webBridgeStepLoad`);
+      for (const key of ["webBridgeLabel", "webBridgeTitle", "webBridgeAddToChrome", "webBridgeStoreHint"]) {
+        assert.ok(strings[lang][key], `${lang}.${key}`);
+      }
     }
   });
 });

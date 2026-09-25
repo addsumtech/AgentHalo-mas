@@ -44,21 +44,22 @@ test("PWA icon URLs use canonical packaged assets without tracked copies", () =>
   );
 });
 
-test("asset policy owns the canonical Windows and PWA icon sources", () => {
+test("asset policy owns the canonical PWA icons and keeps the Windows icon out of the store package", () => {
   const policy = JSON.parse(
     fs.readFileSync(path.join(ROOT, "tools", "repository-asset-policy.json"), "utf8"),
   );
   const entries = new Map(policy.entries.map((entry) => [entry.path, entry]));
 
-  for (const canonical of [
-    "assets/icon.ico",
-    "assets/icons/256x256.png",
-    "assets/icons/512x512.png",
+  for (const [canonical, packaged] of [
+    // Upstream Windows icon: kept in the repository, not in the MAS package.
+    ["assets/icon.ico", false],
+    ["assets/icons/256x256.png", true],
+    ["assets/icons/512x512.png", true],
   ]) {
     const entry = entries.get(canonical);
     assert.ok(entry, `${canonical} must have an auditable policy entry`);
     assert.strictEqual(entry.owner, "build-release");
-    assert.strictEqual(entry.packaged, true);
+    assert.strictEqual(entry.packaged, packaged, canonical);
   }
 
   for (const { retired } of ICONS) {

@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
 const createThemeContext = require("./theme-context");
+const { DEFAULT_THEME_ID, DEFAULT_RENDERER_ASSETS_PATH } = createThemeContext;
 const {
   resolveExternalAssetsDir: _resolveExternalAssetsDir,
   externalAssetsSourceDir: _externalAssetsSourceDir,
@@ -50,7 +51,7 @@ const {
 
 let runtimeOwner = null;
 let builtinThemesDir = null;   // set by init()
-let assetsSvgDir = null;       // assets/svg/ for built-in theme
+let defaultAssetsDir = null;   // themes/halo/assets/ — fallback when no theme is active
 let assetsSoundsDir = null;    // assets/sounds/ for built-in theme
 let userDataDir = null;        // app.getPath("userData") — set by init()
 let userThemesDir = null;      // {userData}/themes/
@@ -66,7 +67,7 @@ let soundOverridesRoot = null; // {userData}/sound-overrides/ — per-theme copi
  */
 function init(appDir, userData) {
   builtinThemesDir = path.join(appDir, "..", "themes");
-  assetsSvgDir = path.join(appDir, "..", "assets", "svg");
+  defaultAssetsDir = path.join(builtinThemesDir, DEFAULT_THEME_ID, "assets");
   assetsSoundsDir = path.join(appDir, "..", "assets", "sounds");
   if (userData) {
     userDataDir = userData;
@@ -86,7 +87,7 @@ function getSoundOverridesDir(themeId) {
 
 function _createThemeContext(theme) {
   return createThemeContext(theme, {
-    assetsSvgDir,
+    defaultAssetsDir,
     assetsSoundsDir,
   });
 }
@@ -161,7 +162,7 @@ function loadTheme(themeId, opts = {}) {
   const requestedVariant = typeof opts.variant === "string" && opts.variant ? opts.variant : "default";
   const userOverrides = _isPlainObject(opts.overrides) ? opts.overrides : null;
   const { raw, isBuiltin, themeDir } = _readThemeJson(themeId);
-  const defaultThemeId = _readThemeJson("halo").raw ? "halo" : "clawd";
+  const defaultThemeId = DEFAULT_THEME_ID;
 
   if (!raw) {
     const msg = `Theme "${themeId}" not found`;
@@ -228,7 +229,8 @@ function loadTheme(themeId, opts = {}) {
     theme._assetsDir = assetsDir;
     theme._assetsFileUrl = pathToFileURL(assetsDir).href;
   } else {
-    theme._assetsDir = assetsSvgDir;
+    // Built-in themes reference only their own assets folder.
+    theme._assetsDir = path.join(themeDir, "assets");
     theme._assetsFileUrl = null; // built-in uses relative path
   }
 
@@ -325,7 +327,7 @@ function resolveHint(hookFilename) {
 
 /**
  * Get the absolute directory path for assets of the active theme.
- * Built-in: assets/svg/. External: theme-cache for SVGs, theme dir for non-SVGs.
+ * Built-in: themes/<id>/assets/. External: theme-cache for SVGs, theme dir for non-SVGs.
  * @returns {string} absolute directory path
  */
 /**
@@ -351,7 +353,7 @@ function _resolveAssetPath(theme, filename) {
  */
 function getRendererAssetsPath() {
   const context = _getActiveThemeContext();
-  return context ? context.getRendererAssetsPath() : "../assets/svg";
+  return context ? context.getRendererAssetsPath() : DEFAULT_RENDERER_ASSETS_PATH;
 }
 
 /**
@@ -418,7 +420,7 @@ function validateThemeShape(themeId, opts = {}) {
   effective._builtin = isBuiltin;
   effective._themeDir = themeDir;
   effective._variantId = resolvedId;
-  effective._assetsDir = isBuiltin ? assetsSvgDir : _externalAssetsSourceDir(themeDir);
+  effective._assetsDir = isBuiltin ? path.join(themeDir, "assets") : _externalAssetsSourceDir(themeDir);
 
   const effectiveErrors = validateTheme(patched);
   const resourceErrors = _validateRequiredAssets(effective);
@@ -466,7 +468,6 @@ function getPreviewSoundUrl() {
 function getThemeMetadata(themeId) {
   return _getThemeMetadata(themeId, {
     readThemeJson: _readThemeJson,
-    assetsSvgDir,
   });
 }
 
@@ -477,10 +478,11 @@ function getThemeMetadata(themeId) {
  * `theme` / `themeOverrides` broadcast.
  */
 function listThemesWithMetadata() {
-  return _listThemesWithMetadata({ builtinThemesDir, userThemesDir, assetsSvgDir });
+  return _listThemesWithMetadata({ builtinThemesDir, userThemesDir });
 }
 
 module.exports = {
+  DEFAULT_THEME_ID,
   init,
   bindActiveThemeRuntime,
   discoverThemes,

@@ -3,6 +3,7 @@
 (function initSettingsTabAbout(root) {
   let helpers = null;
   let ops = null;
+  let runtime = null;
   const t = (key) => helpers.t(key);
 
   function linkRow(label, url, text) {
@@ -171,18 +172,23 @@
       if (!document.body.contains(parent)) return;
       const safe = info || {};
       infoSection.appendChild(linkRow(t("aboutVersionLabel"), null, "v" + (safe.version || "1.0.0")));
-      infoSection.appendChild(linkRow(t("aboutRepositoryLabel"), safe.repoUrl, "addsumtech / AgentHalo"));
+      // Repository, feedback and license point at the store binary's AGPL
+      // source (settings:get-about-info owns the URLs).
+      infoSection.appendChild(linkRow(t("aboutRepositoryLabel"), safe.repoUrl,
+        safe.repoLabel || safe.repoUrl || ""));
       infoSection.appendChild(linkRow(t("aboutFeedbackLabel"), safe.issuesUrl, t("aboutFeedbackAction")));
       infoSection.appendChild(linkRow(t("aboutPrivacyLabel"),
         t("aboutPrivacyUrl"), t("aboutPrivacyAction")));
       infoSection.appendChild(linkRow(t("aboutSupportLabel"),
         t("aboutSupportUrl"), t("aboutSupportAction")));
       infoSection.appendChild(tutorialRow());
-      infoSection.appendChild(linkRow(t("webBridgeLabel"),
-        t("webBridgeDownloadUrl"), t("webBridgeDownload")));
+      // Offered only through the Chrome Web Store (see settings-tab-agents.js).
+      if (runtime && runtime.webBridgeStoreUrl) {
+        infoSection.appendChild(linkRow(t("webBridgeLabel"),
+          runtime.webBridgeStoreUrl, t("webBridgeAddToChrome")));
+      }
       infoSection.appendChild(linkRow(t("aboutUpdateLabel"), null, t("aboutManualUpdates")));
-      infoSection.appendChild(linkRow(t("aboutLicenseLabel"),
-        "https://github.com/addsumtech/AgentHalo/blob/main/agenthalo/LICENSE",
+      infoSection.appendChild(linkRow(t("aboutLicenseLabel"), safe.licenseUrl,
         safe.license || "AGPL-3.0-only"));
       const thankYou = document.createElement("p");
       thankYou.textContent = t("aboutUpstreamThanks");
@@ -200,6 +206,7 @@
   function init(core) {
     helpers = core.helpers;
     ops = core.ops;
+    runtime = core.runtime || null;
     core.tabs.about = { render };
   }
 

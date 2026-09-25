@@ -397,8 +397,7 @@ test("repository and CI use the supported Node contract", () => {
   assert.equal(fs.readFileSync(path.join(rootDir, ".nvmrc"), "utf8").trim(), "24.18.0");
 
   for (const workflowPath of [
-    ".github/workflows/build.yml",
-    ".github/workflows/wayland-smoke.yml",
+    ".github/workflows/repository-asset-audit.yml",
   ]) {
     const workflow = fs.readFileSync(path.join(rootDir, workflowPath), "utf8");
     assert.match(workflow, /node-version-file:\s*\.nvmrc/);

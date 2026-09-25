@@ -47,7 +47,9 @@
       root.ClawdSettingsDoctorModal.renderSidebarIndicator(health, root.ClawdSettingsCore);
       parent.appendChild(health);
     }
-    parent.appendChild(buildWebBridgeCard());
+    // The browser extension is offered only through the Chrome Web Store. Until
+    // that listing exists the store build shows no card for it at all.
+    if (runtime.webBridgeStoreUrl) parent.appendChild(buildWebBridgeCard());
     const metadata = runtime.agentMetadata || [];
     const agents = typeof sortAgentMetadataForSettings === "function"
       ? sortAgentMetadataForSettings(metadata)
@@ -77,11 +79,10 @@
   }
 
   function buildWebBridgeCard() {
-    // Keep setup progress across preference broadcasts and tab changes. Checking
-    // for a public release remains an explicit action, never a render side effect.
+    // Keep check results across preference broadcasts and tab changes. Checking
+    // remains an explicit action, never a render side effect.
     const ui = runtime.webBridgeUi ||= {
-      setupOpen: false, browser: "chrome", pending: false, report: null,
-      installDir: "", notice: [], detailsOpen: false,
+      pending: false, report: null, notice: [], detailsOpen: false,
     };
     function element(tag, className, text) {
       const node = document.createElement(tag);
@@ -102,68 +103,14 @@
     content.appendChild(element("h2", "", t("webBridgeTitle")));
     content.appendChild(element("p", "web-bridge-description", t("webBridgeDescription")));
     header.appendChild(content);
-    const download = element("a", "soft-btn accent web-bridge-download", t("webBridgeDownload"));
-    download.href = t("webBridgeDownloadUrl");
-    download.addEventListener("click", async (event) => {
-      event.preventDefault();
-      try {
-        await window.settingsAPI.openExternal(download.href);
-      } catch {
-        ui.notice = ["webBridgeOpenFailed"];
-        ops.requestRender({ content: true, preserveScroll: true });
-      }
-    });
-    header.appendChild(download);
     card.appendChild(header);
 
     const actions = element("div", "web-bridge-actions");
-    const storeUrl = runtime.webBridgeStoreUrl
-      || "https://github.com/addsumtech/AgentHalo/releases";
-    runtime.webBridgeStoreUrl = storeUrl;
-    const install = button("soft-btn web-bridge-install", "webBridgeAddToChrome");
+    const install = button("soft-btn accent web-bridge-install", "webBridgeAddToChrome");
     const check = button("settings-footer-link web-bridge-check", "webBridgeCheck");
     actions.appendChild(install);
     actions.appendChild(check);
     card.appendChild(actions);
-
-    const setup = element("div", "web-bridge-setup");
-    const setupInner = element("div", "settings-disclosure-body-inner");
-    const setupPanel = element("div", "web-bridge-setup-panel");
-    setupPanel.appendChild(element("p", "web-bridge-requirements", t("webBridgeRequirements")));
-    const steps = element("ol", "web-bridge-steps");
-    const first = element("li", "", t("webBridgeStepPrepare"));
-    const prepareActions = element("div", "web-bridge-prepare-actions");
-    const browser = element("select", "web-bridge-browser");
-    browser.setAttribute("aria-label", t("webBridgeBrowser"));
-    for (const [value, label] of [["chrome", "Chrome"], ["edge", "Edge"]]) {
-      const option = element("option", "", label);
-      option.value = value;
-      option.selected = value === ui.browser;
-      browser.appendChild(option);
-    }
-    browser.value = ui.browser;
-    browser.addEventListener("change", () => { ui.browser = browser.value; });
-    const prepare = button("soft-btn accent web-bridge-prepare", "webBridgePrepare");
-    prepareActions.appendChild(browser);
-    prepareActions.appendChild(prepare);
-    first.appendChild(prepareActions);
-    steps.appendChild(first);
-    steps.appendChild(element("li", "", t("webBridgeStepLoad")));
-    const last = element("li", "", t("webBridgeStepFinish"));
-    if (ui.installDir) last.appendChild(element("code", "web-bridge-path", ui.installDir));
-    steps.appendChild(last);
-    setupPanel.appendChild(steps);
-    setupInner.appendChild(setupPanel);
-    setup.appendChild(setupInner);
-    card.appendChild(setup);
-    if (!runtime.webBridgeStoreUrl) {
-      helpers.registerMountedDisposable(helpers.attachSettingsDisclosure({
-        root: card, trigger: install, body: setup, expanded: ui.setupOpen,
-        onExpandedChange: (expanded) => { ui.setupOpen = expanded; },
-      }));
-    } else {
-      setup.hidden = true;
-    }
 
     function connectionLine(report) {
       if (report.connection === "connected") return t("webBridgeConnected");
@@ -178,7 +125,7 @@
     result.setAttribute("role", "status");
     result.setAttribute("aria-live", "polite");
     function syncPending() {
-      check.disabled = prepare.disabled = browser.disabled = ui.pending;
+      install.disabled = check.disabled = ui.pending;
       result.textContent = "";
       for (const key of ui.notice) result.appendChild(element("p", "", t(key)));
     }
@@ -224,41 +171,22 @@
     }
 
     install.addEventListener("click", async () => {
-      if (runtime.webBridgeStoreUrl) {
-        try {
-          await window.settingsAPI.openExternal(runtime.webBridgeStoreUrl);
-          ui.notice = ["webBridgeStoreHint"];
-        } catch {
-          ui.notice = ["webBridgeOpenFailed"];
-        }
-        syncPending();
-        return;
-      }
-    });
-    prepare.addEventListener("click", async () => {
       if (ui.pending) return;
       ui.pending = true;
-      ui.notice = ["webBridgePreparing"];
       syncPending();
       try {
-        const response = await window.settingsAPI.command("prepareWebBridge");
-        if (!response || response.status !== "ok") throw new Error("prepare failed");
-        ui.installDir = response.installDir || "";
-        ui.report = null;
-        // Preparing files does not mean the browser has loaded the extension.
-        ui.notice = ["webBridgePrepared"];
-        try {
-          const revealed = await window.settingsAPI.command("revealWebBridge", { browser: ui.browser });
-          ui.notice.push(revealed && revealed.pathCopied ? "webBridgePathCopied" : "webBridgeCopyManually");
-          if (!revealed || !revealed.opened) ui.notice.push("webBridgeOpenManually");
-        } catch {
-          ui.notice.push("webBridgeCopyManually", "webBridgeOpenManually");
-        }
+        // Register the AI websites first, so the extension can resolve its
+        // agent ids from GET /web-bridge as soon as it is installed.
+        const registered = await window.settingsAPI.command("ensureWebBridge");
+        if (!registered || registered.status !== "ok") throw new Error("registration failed");
+        const opened = await window.settingsAPI.openExternal(runtime.webBridgeStoreUrl);
+        if (opened && opened.status === "error") throw new Error("open failed");
+        ui.notice = ["webBridgeStoreHint"];
       } catch {
-        ui.notice = ["webBridgePrepareFailed"];
+        ui.notice = ["webBridgeOpenFailed"];
       } finally {
         ui.pending = false;
-        if (state.activeTab === "agents") ops.requestRender({ content: true, preserveScroll: true });
+        syncPending();
       }
     });
     check.addEventListener("click", async () => {
@@ -269,7 +197,6 @@
       try {
         const report = await window.settingsAPI.checkWebBridgeStatus();
         if (!report || !Array.isArray(report.installations)) throw new Error("invalid report");
-        runtime.webBridgeStoreUrl = report.storeUrl || "";
         ui.report = report;
         ui.notice = [];
       } catch {

@@ -65,6 +65,20 @@
       "retentionReason": "Editable or retained source artwork; never a packaging input."
     },
     {
+      "pattern": "assets/svg/**",
+      "class": "source-of-truth",
+      "owner": "design-assets",
+      "packaged": false,
+      "retentionReason": "Upstream Clawd character artwork (Anthropic's character, fan art that assets/LICENSE keeps out of commercial use). Retained for upstream regression tests; the store package never ships it."
+    },
+    {
+      "pattern": "extensions/**",
+      "class": "source-of-truth",
+      "owner": "build-release",
+      "packaged": false,
+      "retentionReason": "VS Code/Cursor terminal-focus extension source. The store app does not install code into other apps (App Review 2.4.5(ii), 2.5.2), so it is not packaged."
+    },
+    {
       "pattern": "test/fixtures/**",
       "class": "tests-fixtures",
       "owner": "test-suite",
@@ -82,6 +96,13 @@
       "retentionReason": "Asset license must be retained regardless of code references."
     },
     {
+      "path": "assets/accessories/cigarette.svg",
+      "class": "source-of-truth",
+      "owner": "design-assets",
+      "packaged": false,
+      "retentionReason": "Retired upstream mouth accessory kept as the reproducible counterpart of its archived PR source; the store package excludes it for the 4+ age rating."
+    },
+    {
       "path": "assets/hero.gif",
       "class": "docs-marketing",
       "owner": "docs-readme",
@@ -94,14 +115,14 @@
       "class": "runtime-required",
       "owner": "build-release",
       "packaged": true,
-      "retentionReason": "Canonical application icon used by packaging, Windows/Linux trays, localized READMEs, and runtime integrations."
+      "retentionReason": "Canonical application icon used by packaging, the About tab, localized READMEs, and runtime integrations."
     },
     {
       "path": "assets/icon.ico",
-      "class": "runtime-required",
+      "class": "source-of-truth",
       "owner": "build-release",
-      "packaged": true,
-      "retentionReason": "Canonical Windows build and shell icon; packaged once as a physical extraResource and embedded into Windows executables by electron-builder."
+      "packaged": false,
+      "retentionReason": "Upstream Windows build and shell icon. The Mac App Store package has no Windows target and does not ship it."
     },
     {
       "path": "assets/icons/256x256.png",
@@ -115,7 +136,7 @@
       "class": "runtime-required",
       "owner": "build-release",
       "packaged": true,
-      "retentionReason": "Canonical 512px runtime icon used by Linux packaging and served at the stable PWA icon URL."
+      "retentionReason": "Canonical 512px runtime icon served at the stable PWA icon URL."
     }
   ],
   "duplicatePayloadExemptions": [

@@ -151,23 +151,23 @@ function makeHttpsRequestMock(routes) {
   return { request, calls };
 }
 
-test("parses clawd import URLs and rejects unsafe remote hosts", () => {
+test("parses agenthalo import URLs and rejects unsafe remote hosts", () => {
   const parsed = importer.parseClawdImportUrl(
-    "clawd://import-pet?url=https%3A%2F%2Fexample.test%2Fpets%2Ftiny%2Fpet.json"
+    "agenthalo://import-pet?url=https%3A%2F%2Fexample.test%2Fpets%2Ftiny%2Fpet.json"
   );
   assert.strictEqual(parsed.action, "import-pet");
   assert.strictEqual(parsed.url, "https://example.test/pets/tiny/pet.json");
   const idn = importer.parseClawdImportUrl(
-    `clawd://import-pet?url=${encodeURIComponent("https://例え.テスト/pets/tiny/pet.json")}`
+    `agenthalo://import-pet?url=${encodeURIComponent("https://例え.テスト/pets/tiny/pet.json")}`
   );
   assert.match(idn.asciiHostname, /^xn--/);
 
   assert.throws(
-    () => importer.parseClawdImportUrl("clawd://import-pet?url=http%3A%2F%2Fexample.test%2Fpet.json"),
+    () => importer.parseClawdImportUrl("agenthalo://import-pet?url=http%3A%2F%2Fexample.test%2Fpet.json"),
     /https/
   );
   assert.throws(
-    () => importer.parseClawdImportUrl("clawd://import-pet?url=https%3A%2F%2Flocalhost%2Fpet.json"),
+    () => importer.parseClawdImportUrl("agenthalo://import-pet?url=https%3A%2F%2Flocalhost%2Fpet.json"),
     /blocked/
   );
 });
@@ -503,7 +503,8 @@ test("requires confirmation before replacing Clawd-imported pet packages", async
 });
 
 
-test("AgentHalo import links and legacy links resolve to the same validated package", () => {
+test("accepts only agenthalo:// links, leaving clawd:// to upstream Clawd on Desk", () => {
   const tail = "import-pet?url=https%3A%2F%2Fexample.test%2Fpet.json";
-  assert.deepStrictEqual(importer.parseClawdImportUrl(`agenthalo://${tail}`), importer.parseClawdImportUrl(`clawd://${tail}`));
+  assert.strictEqual(importer.parseClawdImportUrl(`agenthalo://${tail}`).url, "https://example.test/pet.json");
+  assert.throws(() => importer.parseClawdImportUrl(`clawd://${tail}`), /unsupported protocol/);
 });
