@@ -112,7 +112,13 @@ describe("runtime reachability of the packaged app", () => {
     for (const name of report.dependencies.used) {
       assert.equal(excludedDeps.has(name), false, `${name} is required at run time`);
     }
-    assert.deepEqual(report.dependencies.used, ["htmlparser2", "jsonc-parser", "koffi"]);
+    assert.deepEqual(report.dependencies.used, ["dom-serializer", "htmlparser2", "jsonc-parser", "koffi"]);
+  });
+
+  it("declares every package that reachable code requires", () => {
+    // theme-sanitizer.js requires dom-serializer directly; relying on it
+    // being hoisted from htmlparser2's tree breaks when that tree changes.
+    assert.deepEqual(report.dependencies.undeclared, []);
   });
 });
 
