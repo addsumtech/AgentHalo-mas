@@ -13,7 +13,7 @@
 
 本文件属于 Mac App Store 源码树。用户从 App Store 更新；开发构建使用 `npm run build:mas`。
 
-浏览器扩展仍为 v0.3.3，请从 Chrome 网上应用店或完整版仓库安装。商店包不会改 Chrome 配置。
+商店版内置 17 个原创角色和孙悟空，不包含浏览器扩展、VS Code 扩展和已下线的远程功能（Telegram、飞书、Slack、Discord、远程 SSH、WSL、局域网预览）。
 
 ## 许可证
 

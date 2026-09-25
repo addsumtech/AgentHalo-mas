@@ -19,7 +19,7 @@ const { describe, it, afterEach } = require("node:test");
 
 const REPO_ROOT = path.join(__dirname, "..");
 const SCRIPT_PATH = path.join(REPO_ROOT, "scripts", "validate-theme.js");
-const THEME = path.join(REPO_ROOT, "themes", "jobs");
+const THEME = path.join(REPO_ROOT, "themes", "sunwukong");
 
 const tempDirs = [];
 
@@ -354,9 +354,9 @@ describe("validate-theme.js CLI (real process, spawnSync)", () => {
   });
 
   it("control: a real, shipped, valid theme validates clean", () => {
-    // themes/jobs rather than a hand-built fixture: assembling a theme.json
+    // themes/sunwukong rather than a hand-built fixture: assembling a theme.json
     // that clears every rule (required states, sleepSequence, eye-tracking SVG
-    // ids, asset existence) would just re-derive a shipped theme. Pikachu is
+    // ids, asset existence) would just re-derive a shipped theme. Sun Wukong is
     // git-tracked and has its own assets/, so this exercises the full pass.
     const result = runValidateTheme([THEME]);
     assert.strictEqual(result.status, 0, result.stderr || result.stdout);

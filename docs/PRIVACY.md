@@ -1,11 +1,13 @@
 # AgentHalo Privacy Policy
 
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-25
 **Effective date:** 2026-09-13
 **Operator:** Addsum
 **Privacy contact:** [addsumtech@gmail.com](mailto:addsumtech@gmail.com)
 
 This policy covers the AgentHalo desktop app for macOS and the AgentHalo Web Bridge browser extension. It describes the behaviour of the shipped build; every statement below was checked against the source code rather than against intent.
+
+If you installed AgentHalo from the Mac App Store, also read [Mac App Store build](#mac-app-store-build) below. It says where that build keeps its files, how its folder access works, and which parts of this policy do not apply to it.
 
 ## The short version
 
@@ -24,7 +26,7 @@ Opening a link, or importing a companion character from a URL you supplied, also
 - No automatic update check. The updater is a stub that reports "manual only" and never contacts a server.
 - No advertising, no advertising identifier, no data broker, no sale or sharing of data.
 - No account, no sign-in, no cloud sync.
-- No reading of your conversations. See the browser extension section for exactly what is and is not read.
+- No uploading of your conversations. To drive the companion, AgentHalo receives task titles and short reply excerpts from your own tools on this Mac; see [the local connection](#the-local-connection-agenthalo-listens-on) for exactly what. The browser extension section says what the extension reads.
 
 ## What stays on your Mac
 
@@ -45,7 +47,7 @@ Live session details, including the working directory and the title of the curre
 
 AgentHalo runs a small HTTP server bound to `127.0.0.1` on the first free port between 23333 and 23337. It is reachable only from your own machine; it is not exposed to your network or the internet.
 
-Your locally installed AI coding tools post their status to it through hook scripts that AgentHalo installs into those tools' own configuration directories, such as `~/.claude` and `~/.codex`. A status message carries the agent name, a session id, the state, the event name, the working directory, the task title, and the name of the tool being run. A completion may include a short excerpt of the assistant's last message, capped at 2400 characters, which is used only to decide which animation to play and is never written to disk or sent anywhere.
+Your locally installed AI coding tools post their status to it through hook scripts that AgentHalo installs into those tools' own configuration directories, such as `~/.claude` and `~/.codex`. A status message carries the agent name, a session id, the state, the event name, the working directory, the task title, and the name of the tool being run. The task title is taken from the first line of your prompt, or from the tool's own session title. A completion may include a short excerpt of the assistant's last message, capped at 2400 characters, which is used only to decide which animation to play and is never written to disk or sent anywhere. A permission request also carries the tool input, such as the command to run, so the bubble can show it before you decide. For Claude Code, AgentHalo also reads the end of the session transcript on disk to confirm that a task has finished.
 
 There is no authentication beyond the localhost binding. Any program already running as you could post to this port. We consider that the same trust boundary as your own shell.
 
@@ -88,6 +90,39 @@ Because nothing is collected, there is no account to close and no data for us to
 - Uninstall the browser extension to stop all web page observation.
 - Delete `~/Library/Application Support/AgentHalo/` and `~/.clawd/` to remove everything AgentHalo has written.
 
+## Mac App Store build
+
+The Mac App Store build of AgentHalo runs in App Sandbox. Everything above applies to it, with these differences.
+
+**Where its files live.** macOS keeps a sandboxed app's files in the app's container, so the paths in [What stays on your Mac](#what-stays-on-your-mac) move:
+
+| What | Where in the Mac App Store build |
+| --- | --- |
+| Preferences, diagnostic logs, imported companions and the theme cache | `~/Library/Containers/com.addsum.agenthalo/Data/Library/Application Support/AgentHalo/` |
+| Folder authorizations (`authorized-dirs.json`) | the same folder |
+| Activity footprints, runtime discovery, the encrypted Kimi key | `~/Library/Containers/com.addsum.agenthalo/Data/.clawd/` |
+
+**Folder access.** The store build cannot open `~/.claude`, `~/.codex` or any other tool's configuration folder until you choose that folder yourself. In Settings → Connected apps, click "Choose folder" next to a tool. The system folder picker opens at that tool's folder; AgentHalo accepts only that folder or a folder that contains it, and cancelling writes nothing. AgentHalo then saves a security-scoped bookmark for the folder in `authorized-dirs.json`. It uses the bookmark only to add or remove its own hook entries in that tool's configuration, and to read that tool's session files there to tell when a task has finished. Apart from its container and the folders you choose, the app cannot reach your files.
+
+**What the app receives.** The hook messages described in [the local connection](#the-local-connection-agenthalo-listens-on) are the same in this build: task state, event name, working directory, tool name, task title, a short excerpt of the final reply when a task finishes, and the tool input of a permission request. AgentHalo processes this task status locally. Nothing is stored off your Mac, and nothing is uploaded to Apple, to us, or to anyone else.
+
+**What the store build leaves out.**
+
+- It does not send Apple Events and does not control Terminal or any other app.
+- It does not install a VS Code extension.
+- It does not include the browser extension, so [the browser extension](#the-browser-extension) section and the GitHub version check described at the top do not apply.
+- It does not include the retired remote features: Telegram, Slack, Feishu/Lark, Discord, remote SSH, WSL and LAN preview.
+- It has no updater. Updates come only from the Mac App Store.
+
+The only requests it makes on its own behalf are the ones you start: the optional Kimi usage lookup after you save your own key, opening a link, or importing a companion pack from a link you opened.
+
+**Revoking access and cleaning up.**
+
+1. To disconnect one tool, turn it off in Settings → Connected apps and choose to disconnect it. AgentHalo removes its hook entries from that tool's configuration folder.
+2. To check by hand, look in the tool's own configuration (for Claude Code, `hooks` in `~/.claude/settings.json`). AgentHalo's entries are the ones that point into `AgentHalo.app` or to `http://127.0.0.1` on a port from 23333 to 23337. You can delete them yourself.
+3. To withdraw every folder authorization, quit AgentHalo and delete `authorized-dirs.json` from the folder in the table above. The bookmarks are gone and AgentHalo has to ask again.
+4. To remove everything, disconnect your tools first, quit AgentHalo, move the app to the Trash, then delete `~/Library/Containers/com.addsum.agenthalo/`.
+
 ## Changes
 
 If AgentHalo's data handling changes, this page and the effective date above will be updated before the change ships.
@@ -100,12 +135,14 @@ Privacy questions: [addsumtech@gmail.com](mailto:addsumtech@gmail.com).
 
 # AgentHalo 隐私政策
 
-**最后更新：** 2026-09-19
+**最后更新：** 2026-09-25
 **生效日期：** 2026-09-13
 **运营主体：** Addsum
 **隐私联系：** [addsumtech@gmail.com](mailto:addsumtech@gmail.com)
 
 本政策适用于 macOS 桌面应用 AgentHalo 与 AgentHalo Web Bridge 浏览器扩展。以下每一条都是对照源码核对过的，不是对设计意图的描述。
+
+如果你是从 Mac App Store 安装的 AgentHalo，请同时阅读下文的[Mac App Store 版](#mac-app-store-版)一节：那里写明了商店版把文件存在哪里、文件夹授权怎么工作，以及本政策哪些部分不适用于商店版。
 
 ## 一句话版本
 
@@ -124,7 +161,7 @@ AgentHalo 没有账号、没有服务器、没有统计。它不收集、不传�
 - 没有自动更新检查。更新器是一个桩，只返回"仅手动"，从不联网。
 - 没有广告、没有广告标识符、没有数据经纪、不出售也不共享数据。
 - 没有账号、没有登录、没有云同步。
-- 不读你的对话内容。具体读了什么、没读什么，见下面浏览器扩展一节。
+- 不上传你的对话。为了让桌宠做出反应，AgentHalo 会在本机收到你的工具发来的任务标题和简短回复摘录，具体内容见[AgentHalo 监听的本地连接](#agenthalo-监听的本地连接)。浏览器扩展读了什么，见浏览器扩展一节。
 
 ## 留在你 Mac 上的东西
 
@@ -145,7 +182,7 @@ AgentHalo 没有账号、没有服务器、没有统计。它不收集、不传�
 
 AgentHalo 会在 `127.0.0.1` 上启动一个小的 HTTP 服务，占用 23333 到 23337 之间第一个空闲端口。它只能从本机访问，不向局域网或互联网暴露。
 
-你本机安装的 AI 编程工具通过 hook 脚本把状态发到这里，这些脚本由 AgentHalo 安装到那些工具自己的配置目录，例如 `~/.claude` 和 `~/.codex`。一条状态消息包含 agent 名称、会话 id、状态、事件名、工作目录、任务标题，以及正在运行的工具名。任务完成时可能附带助手最后一条消息的短摘录，上限 2400 字符，只用来决定播哪个动画，既不落盘也不外发。
+你本机安装的 AI 编程工具通过 hook 脚本把状态发到这里，这些脚本由 AgentHalo 安装到那些工具自己的配置目录，例如 `~/.claude` 和 `~/.codex`。一条状态消息包含 agent 名称、会话 id、状态、事件名、工作目录、任务标题，以及正在运行的工具名。任务标题取自你提示词的第一行，或工具自己的会话标题。任务完成时可能附带助手最后一条消息的短摘录，上限 2400 字符，只用来决定播哪个动画，既不落盘也不外发。权限请求还会带上工具输入（例如要执行的命令），好让气泡在你决定之前把它显示出来。对 Claude Code，AgentHalo 还会读取磁盘上会话记录的末尾，用来确认任务已经结束。
 
 除了绑定在 localhost 之外没有额外鉴权。任何已经以你的身份运行的程序都能往这个端口发消息。我们认为这和你自己的 shell 是同一个信任边界。
 
@@ -188,11 +225,38 @@ AgentHalo 是开发者工具，不面向 13 岁以下儿童，也不会有意收
 - 卸载浏览器扩展，即停止全部网页观察。
 - 删除 `~/Library/Application Support/AgentHalo/` 和 `~/.clawd/`，即清除 AgentHalo 写过的一切。
 
-## Mac App Store 补充
+## Mac App Store 版
 
-商店版运行在 App Sandbox 里。它不会默认写入 `~/.claude`、`~/.codex` 或其他家目录配置。只有你在设置里用系统文件夹选择器授权某个工具的配置目录后，AgentHalo 才会用安全范围书签在该目录写入 hook。取消选择则什么都不写。
+Mac App Store 版 AgentHalo 运行在 App Sandbox 里。上文内容同样适用于它，区别如下。
 
-本机状态服务仍只监听 `127.0.0.1`。商店包不写 Chrome 偏好，也不提供 SSH / WSL 部署。
+**文件存在哪里。** macOS 会把沙盒应用的文件放在应用自己的容器里，所以[留在你 Mac 上的东西](#留在你-mac-上的东西)里的路径变成：
+
+| 内容 | 商店版位置 |
+| --- | --- |
+| 偏好设置、诊断日志、导入的角色和主题缓存 | `~/Library/Containers/com.addsum.agenthalo/Data/Library/Application Support/AgentHalo/` |
+| 文件夹授权（`authorized-dirs.json`） | 同上 |
+| 活动足迹、运行时发现、加密的 Kimi key | `~/Library/Containers/com.addsum.agenthalo/Data/.clawd/` |
+
+**文件夹授权。** 在你亲手选择之前，商店版打不开 `~/.claude`、`~/.codex` 或任何工具的配置文件夹。在 设置 → 连接应用 里，点某个工具旁边的「选择文件夹」，系统文件夹选择器会停在那个工具的文件夹；AgentHalo 只接受这个文件夹或包含它的文件夹，取消则什么都不写。随后 AgentHalo 把该文件夹的安全范围书签存进 `authorized-dirs.json`，只用它在那个工具的配置里添加或移除自己的 hook 条目，并读取那里的会话文件，判断任务是否结束。除了自己的容器和你选中的文件夹，应用碰不到你的其他文件。
+
+**应用收到什么。** [AgentHalo 监听的本地连接](#agenthalo-监听的本地连接)里描述的 hook 消息在商店版里完全一样：任务状态、事件名、工作目录、工具名、任务标题、任务完成时回复的简短摘录，以及权限请求里的工具输入。AgentHalo 只在本机处理这些任务状态，不会存到你的 Mac 以外，也不会上传给苹果、我们或任何第三方。
+
+**商店版不包含的东西。**
+
+- 不发送 Apple Events，不控制终端或任何其他应用。
+- 不安装 VS Code 扩展。
+- 不包含浏览器扩展，所以[浏览器扩展](#浏览器扩展)一节和开头提到的 GitHub 版本检查都不适用。
+- 不包含已下线的远程功能：Telegram、Slack、飞书/Lark、Discord、远程 SSH、WSL、局域网预览。
+- 没有更新器，只通过 Mac App Store 更新。
+
+它自己发起的网络请求只有你主动触发的几种：保存自己的 key 之后可选的 Kimi 用量查询、打开链接、从你打开的链接导入角色包。
+
+**撤销授权与清理。**
+
+1. 断开某个工具：在 设置 → 连接应用 里关掉它，并选择断开连接。AgentHalo 会从那个工具的配置文件夹里移除自己的 hook 条目。
+2. 手动检查：打开那个工具自己的配置（Claude Code 是 `~/.claude/settings.json` 里的 `hooks`）。指向 `AgentHalo.app`，或指向 `http://127.0.0.1` 上 23333 到 23337 端口的条目就是 AgentHalo 加的，你可以自己删掉。
+3. 撤销全部文件夹授权：退出 AgentHalo，删除上表位置里的 `authorized-dirs.json`。书签随之失效，AgentHalo 需要重新请求授权。
+4. 彻底清除：先断开所有工具，退出 AgentHalo，把应用移到废纸篓，再删除 `~/Library/Containers/com.addsum.agenthalo/`。
 
 ## 变更
 
