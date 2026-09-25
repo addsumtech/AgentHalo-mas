@@ -603,6 +603,8 @@ describe("settings-effect-router", () => {
   });
 
   it("delivers a complete atomic snapshot when only the mouth selection changes", () => {
+    // The store catalog has no mouth accessory, so a stale "cigarette" choice
+    // still re-delivers both slots but renders nothing in the mouth slot.
     const clawd = {
       _id: "clawd",
       _builtin: true,
@@ -617,7 +619,8 @@ describe("settings-effect-router", () => {
     assert.strictEqual(calls[1][0], "sendToRenderer");
     assert.strictEqual(calls[1][1], "pet-accessory-slots-change");
     assert.strictEqual(calls[1][2].payloads.head.id, "top-hat");
-    assert.strictEqual(calls[1][2].payloads.mouth.id, "cigarette");
+    assert.strictEqual(calls[1][2].payloads.mouth.id, "none");
+    assert.strictEqual(calls[1][2].payloads.mouth.assetFile, null);
     assert.strictEqual(calls[1][2].accessoryGeneration, 1);
     assert.strictEqual(getPetAccessorySlotsSnapshot(clawd), calls[1][2]);
   });

@@ -261,7 +261,9 @@ describe("pet customization catalog", () => {
   });
 
   it("keeps head compatibility exports and a separate immutable mouth catalog", () => {
-    assert.deepStrictEqual(PET_MOUTH_ACCESSORY_IDS, ["none", "cigarette"]);
+    // The store build ships no mouth accessory (the upstream cigarette does not
+    // fit the 4+ rating); the slot itself stays for themes that declare it.
+    assert.deepStrictEqual(PET_MOUTH_ACCESSORY_IDS, ["none"]);
     assert.ok(Object.isFrozen(PET_MOUTH_ACCESSORY_CATALOG));
     assert.ok(PET_MOUTH_ACCESSORY_CATALOG.every(Object.isFrozen));
     assert.ok(Object.isFrozen(PET_MOUTH_ACCESSORY_IDS));
@@ -270,33 +272,29 @@ describe("pet customization catalog", () => {
     assert.strictEqual(PET_ACCESSORY_SLOTS.mouth.preferenceKey, "petMouthAccessory");
   });
 
-  it("resolves only trusted mouth catalog payloads for mouth-capable themes", () => {
+  it("resolves the retired cigarette and unknown mouth ids to no accessory", () => {
     const clawd = { _id: "clawd", _capabilities: { mouthAccessories: true } };
     const cloudling = { _id: "cloudling", _capabilities: { mouthAccessories: false } };
-    assert.strictEqual(isPetMouthAccessoryId("cigarette"), true);
-    assert.strictEqual(isPetMouthAccessoryId("pipe"), false);
-    assert.strictEqual(getPetMouthAccessory("pipe").id, "none");
-    assert.strictEqual(isPetMouthAccessorySupportedForTheme(clawd), true);
-    assert.strictEqual(isPetMouthAccessorySupportedForTheme(cloudling), false);
-    assert.deepStrictEqual(buildPetMouthAccessoryPayload("cigarette", clawd), {
-      id: "cigarette",
-      assetFile: "cigarette.svg",
-      aspect: 5 / 9,
-      widthScale: 1,
-      offsetY: 0,
-    });
-    assert.deepStrictEqual(buildPetMouthAccessoryPayload("cigarette", cloudling), {
+    const none = {
       id: "none",
       assetFile: null,
       aspect: 1,
       widthScale: 1,
       offsetY: 0,
-    });
-    assert.strictEqual(getPetMouthAccessoryIdForTheme({ clawd: "cigarette" }, "clawd"), "cigarette");
+    };
+    assert.strictEqual(isPetMouthAccessoryId("cigarette"), false);
+    assert.strictEqual(isPetMouthAccessoryId("pipe"), false);
+    assert.strictEqual(isPetMouthAccessoryId("none"), true);
+    assert.strictEqual(getPetMouthAccessory("cigarette").id, "none");
+    assert.strictEqual(getPetMouthAccessory("pipe").id, "none");
+    assert.strictEqual(isPetMouthAccessorySupportedForTheme(clawd), true);
+    assert.strictEqual(isPetMouthAccessorySupportedForTheme(cloudling), false);
+    assert.deepStrictEqual(buildPetMouthAccessoryPayload("cigarette", clawd), none);
+    assert.deepStrictEqual(buildPetMouthAccessoryPayload("cigarette", cloudling), none);
+    assert.strictEqual(getPetMouthAccessoryIdForTheme({ clawd: "cigarette" }, "clawd"), "none");
     assert.strictEqual(getPetMouthAccessoryIdForTheme("cigarette", "clawd"), "none");
     assert.deepStrictEqual(listPetMouthAccessoryOptions(), [
       { id: "none", labelKey: "accessoryNone" },
-      { id: "cigarette", labelKey: "accessoryCigarette" },
     ]);
   });
 });

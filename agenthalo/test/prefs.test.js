@@ -495,7 +495,7 @@ describe("prefs.validate", () => {
       theme: "calico",
       petTint: { clawd: "gold", cloudling: "matcha" },
       petAccessory: { clawd: "wizard-hat", cloudling: "halo" },
-      petMouthAccessory: { clawd: "cigarette" },
+      petMouthAccessory: {},
     });
     assert.strictEqual(v.lang, "ko");
     assert.strictEqual(v.soundMuted, true);
@@ -522,7 +522,7 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.theme, "calico");
     assert.deepStrictEqual(v.petTint, { clawd: "gold", cloudling: "matcha" });
     assert.deepStrictEqual(v.petAccessory, { clawd: "wizard-hat", cloudling: "halo" });
-    assert.deepStrictEqual(v.petMouthAccessory, { clawd: "cigarette" });
+    assert.deepStrictEqual(v.petMouthAccessory, {});
   });
 
   it("accepts soundVolume 0 (silent playback is valid)", () => {
@@ -1525,12 +1525,14 @@ describe("prefs.migrate v16 → v17 (mouth accessory slot)", () => {
     assert.deepStrictEqual(upgraded.petMouthAccessory, {});
   });
 
-  it("preserves a valid mouth selection from an unreleased v16 development snapshot", () => {
+  it("drops the retired cigarette from an unreleased v16 development snapshot", () => {
+    // The store catalog has no mouth accessory (4+ rating), so the upstream
+    // cigarette is an unknown id now.
     const upgraded = prefs.validate(prefs.migrate({
       version: 16,
       petMouthAccessory: { clawd: "cigarette" },
     }));
-    assert.deepStrictEqual(upgraded.petMouthAccessory, { clawd: "cigarette" });
+    assert.deepStrictEqual(upgraded.petMouthAccessory, {});
   });
 
   it("does not share the new default map between snapshots", () => {
@@ -2064,14 +2066,12 @@ describe("prefs.save", () => {
 
   it("round-trips per-theme mouth accessories and stores only catalog ids", () => {
     const p = makeTempPath();
+    // The retired cigarette is not a catalog id in the store build.
     prefs.save(p, {
       ...prefs.getDefaults(),
       petMouthAccessory: { clawd: "cigarette" },
     });
-    assert.deepStrictEqual(
-      prefs.load(p).snapshot.petMouthAccessory,
-      { clawd: "cigarette" }
-    );
+    assert.deepStrictEqual(prefs.load(p).snapshot.petMouthAccessory, {});
 
     prefs.save(p, {
       ...prefs.getDefaults(),

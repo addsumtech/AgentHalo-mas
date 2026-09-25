@@ -80,6 +80,26 @@ function matchesAnyGlob(filePath, globs) {
   return (globs || []).some((glob) => matchesGlob(filePath, glob));
 }
 
+// electron-builder file patterns: evaluated in order, a later "!pattern"
+// excludes what earlier patterns included (and a later positive pattern can
+// include it again). Only the plain glob grammar above is accepted after "!".
+function validatePackageGlobs(globs) {
+  for (const glob of globs || []) {
+    const negated = typeof glob === "string" && glob.startsWith("!");
+    globToRegExp(negated ? glob.slice(1) : glob);
+  }
+}
+
+function matchesPackageGlobs(filePath, globs) {
+  let matched = false;
+  for (const glob of globs || []) {
+    const negated = glob.startsWith("!");
+    if (matched !== negated) continue;
+    matched = matchesGlob(filePath, negated ? glob.slice(1) : glob) ? !negated : matched;
+  }
+  return matched;
+}
+
 function sha256File(filePath) {
   const hash = crypto.createHash("sha256");
   hash.update(fs.readFileSync(filePath));
@@ -182,14 +202,19 @@ function packageEntry(fullPath, sourcePath, packagePath, origin, asarUnpack) {
 }
 
 function buildSourcePackageManifest(repoRoot, build, revision) {
-  const buildFiles = stableSort(build.files || []);
-  const unpackGlobs = stableSort(build.asarUnpack || []);
-  for (const glob of [...buildFiles, ...unpackGlobs]) globToRegExp(glob);
+  // Pattern order matters for "!" exclusions, so match against the configured
+  // order and only sort for the stable manifest output.
+  const fileGlobs = build.files || [];
+  const unpackPatterns = build.asarUnpack || [];
+  validatePackageGlobs(fileGlobs);
+  validatePackageGlobs(unpackPatterns);
+  const buildFiles = stableSort(fileGlobs);
+  const unpackGlobs = stableSort(unpackPatterns);
   const allFiles = walkFiles(repoRoot);
   const appSources = new Map();
 
   for (const file of allFiles) {
-    if (matchesAnyGlob(file.path, buildFiles)) appSources.set(file.path, file);
+    if (matchesPackageGlobs(file.path, fileGlobs)) appSources.set(file.path, file);
   }
 
   const implicitPackageJson = path.join(repoRoot, "package.json");
@@ -203,7 +228,7 @@ function buildSourcePackageManifest(repoRoot, build, revision) {
       file.path,
       `app/${file.path}`,
       "build.files",
-      matchesAnyGlob(file.path, unpackGlobs),
+      matchesPackageGlobs(file.path, unpackPatterns),
     ));
 
   const extraResources = (build.extraResources || []).map((entry) => ({

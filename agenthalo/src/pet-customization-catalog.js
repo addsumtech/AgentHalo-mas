@@ -51,14 +51,12 @@ const PET_ACCESSORY_CATALOG = Object.freeze([
 const PET_ACCESSORY_BY_ID = new Map(PET_ACCESSORY_CATALOG.map((entry) => [entry.id, entry]));
 const PET_ACCESSORY_IDS = Object.freeze(PET_ACCESSORY_CATALOG.map((entry) => entry.id));
 
+// The store build ships no mouth accessory: upstream's only one was a
+// cigarette, which does not fit the 4+ age rating. The slot stays so themes
+// that declare mouth attachments keep validating, and saved cigarette
+// selections are dropped as unknown ids.
 const PET_MOUTH_ACCESSORY_CATALOG = Object.freeze([
   freezeAccessory({ id: "none", labelKey: "accessoryNone" }),
-  freezeAccessory({
-    id: "cigarette",
-    labelKey: "accessoryCigarette",
-    file: "cigarette.svg",
-    viewBox: { x: 0, y: 0, width: 5, height: 9 },
-  }),
 ]);
 
 const PET_MOUTH_ACCESSORY_BY_ID = new Map(

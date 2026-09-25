@@ -7,8 +7,16 @@ const { minimatch } = require("minimatch");
 const pkg = require("../package.json");
 const ROOT = path.join(__dirname, "..");
 
+// electron-builder evaluates file patterns in order: a later "!pattern"
+// excludes what earlier patterns included.
 function matchedByAnyGlob(globs, target) {
-  return globs.some((g) => minimatch(target, g));
+  let matched = false;
+  for (const glob of globs) {
+    const negated = glob.startsWith("!");
+    if (matched !== negated) continue;
+    if (minimatch(target, negated ? glob.slice(1) : glob)) matched = !negated;
+  }
+  return matched;
 }
 
 function sliceWorkflowBlock(workflow, startMarker, endMarker) {

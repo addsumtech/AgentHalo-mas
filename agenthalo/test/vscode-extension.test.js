@@ -36,10 +36,22 @@ test("the store app never installs the extension into other editors", () => {
   assert.doesNotMatch(main, /["']\.cursor["'], ["']extensions["']/);
 });
 
+// electron-builder evaluates file patterns in order: a later "!pattern"
+// excludes what earlier patterns included.
+function matchesBuildGlobs(file, globs) {
+  let matched = false;
+  for (const glob of globs) {
+    const negated = glob.startsWith("!");
+    if (matched !== negated) continue;
+    if (minimatch(file, negated ? glob.slice(1) : glob)) matched = !negated;
+  }
+  return matched;
+}
+
 test("the extension is not packaged", () => {
   const { build } = require("../package.json");
   for (const file of ["extensions/vscode/package.json", "extensions/vscode/extension.js"]) {
-    assert.ok(!build.files.some((glob) => minimatch(file, glob)), `${file} must not be packaged`);
-    assert.ok(!build.asarUnpack.some((glob) => minimatch(file, glob)), `${file} must not be unpacked`);
+    assert.ok(!matchesBuildGlobs(file, build.files), `${file} must not be packaged`);
+    assert.ok(!matchesBuildGlobs(file, build.asarUnpack), `${file} must not be unpacked`);
   }
 });

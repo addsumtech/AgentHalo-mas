@@ -111,6 +111,7 @@
       "assets/icons/**/*",
       "assets/icons/agents/**/*",
       "assets/accessories/**/*",
+      "!assets/accessories/cigarette.svg",
       "assets/sounds/**/*",
       "assets/dock-icon.png",
       "assets/tray-icon*.png",

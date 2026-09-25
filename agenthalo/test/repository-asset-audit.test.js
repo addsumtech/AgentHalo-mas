@@ -449,8 +449,33 @@ describe("repository asset audit", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "asset-audit-glob-"));
     try {
       assert.throws(
-        () => buildSourcePackageManifest(root, { files: ["!**/*.map"] }, "abc"),
+        () => buildSourcePackageManifest(root, { files: ["!**/*.{map,ts}"] }, "abc"),
+        /unsupported glob brace/,
+      );
+      assert.throws(
+        () => buildSourcePackageManifest(root, { files: ["runtime/**/*", "!!runtime/a.txt"] }, "abc"),
         /unsupported glob negation/,
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("applies electron-builder \"!\" exclusions in pattern order", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "asset-audit-negation-"));
+    try {
+      fs.mkdirSync(path.join(root, "runtime"), { recursive: true });
+      fs.writeFileSync(path.join(root, "package.json"), "{}");
+      for (const name of ["a.svg", "b.svg", "c.svg"]) {
+        fs.writeFileSync(path.join(root, "runtime", name), name);
+      }
+      const manifest = buildSourcePackageManifest(root, {
+        files: ["runtime/**/*", "!runtime/b.svg", "!runtime/c.svg", "runtime/c.svg"],
+        asarUnpack: ["runtime/**/*", "!runtime/a.svg"],
+      }, "abc");
+      assert.deepStrictEqual(
+        manifest.files.map((file) => [file.packagePath, file.asarUnpack]),
+        [["app/package.json", false], ["app/runtime/a.svg", false], ["app/runtime/c.svg", true]],
       );
     } finally {
       fs.rmSync(root, { recursive: true, force: true });

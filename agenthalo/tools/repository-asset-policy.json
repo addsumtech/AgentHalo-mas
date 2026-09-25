@@ -82,6 +82,13 @@
       "retentionReason": "Asset license must be retained regardless of code references."
     },
     {
+      "path": "assets/accessories/cigarette.svg",
+      "class": "source-of-truth",
+      "owner": "design-assets",
+      "packaged": false,
+      "retentionReason": "Retired upstream mouth accessory kept as the reproducible counterpart of its archived PR source; the store package excludes it for the 4+ age rating."
+    },
+    {
       "path": "assets/hero.gif",
       "class": "docs-marketing",
       "owner": "docs-readme",

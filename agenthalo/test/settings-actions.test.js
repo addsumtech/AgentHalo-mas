@@ -116,9 +116,10 @@ describe("updateRegistry pure-data validators", () => {
   it("petMouthAccessory accepts only safe per-theme catalog selections", () => {
     const deps = { snapshot: baseSnapshot };
     assert.strictEqual(updateRegistry.petMouthAccessory({}, deps).status, "ok");
+    // The retired cigarette is no longer a catalog id in the store build.
     assert.strictEqual(
       updateRegistry.petMouthAccessory({ clawd: "cigarette" }, deps).status,
-      "ok"
+      "error"
     );
     assert.strictEqual(updateRegistry.petMouthAccessory({ clawd: "none" }, deps).status, "error");
     assert.strictEqual(updateRegistry.petMouthAccessory({ clawd: "pipe" }, deps).status, "error");

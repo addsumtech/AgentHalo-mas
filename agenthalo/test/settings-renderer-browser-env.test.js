@@ -11540,7 +11540,7 @@ describe("settings renderer browser environment", () => {
       snapshot: {
         petTint: { clawd: "matcha", cloudling: "vaporwave" },
         petAccessory: { clawd: "wizard-hat", cloudling: "halo" },
-        petMouthAccessory: { clawd: "cigarette" },
+        petMouthAccessory: {},
         holidayAccessoryEnabled: {},
       },
       petTintOptions: [
@@ -11557,16 +11557,18 @@ describe("settings renderer browser environment", () => {
         { id: "wizard-hat", labelKey: "accessoryWizardHat" },
         { id: "halo", labelKey: "accessoryHalo" },
       ],
+      // The store catalog has no mouth accessory (4+ rating).
       petMouthAccessoryOptions: [
         { id: "none", labelKey: "accessoryNone" },
-        { id: "cigarette", labelKey: "accessoryCigarette" },
       ],
     });
 
     harness.content.querySelector(".theme-customize-btn").dispatchEvent({ type: "click" });
     assert.ok(harness.content.querySelector(".theme-detail-back"));
     assert.ok(harness.content.querySelector(".theme-detail-hero"));
-    assert.strictEqual(harness.content.querySelectorAll(".theme-customization-row").length, 4);
+    assert.strictEqual(harness.content.querySelectorAll(".theme-customization-row").length, 3);
+    assert.strictEqual(harness.content.querySelector(".pet-mouth-accessory-select"), null,
+      "a mouth picker with nothing but None is hidden even for mouth-capable themes");
     assert.strictEqual(harness.content.querySelector(".theme-grid"), null);
 
     const select = harness.content.querySelector(".pet-tint-select");
@@ -11616,28 +11618,13 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(accessorySelect.querySelector(".language-picker-trigger").disabled, false);
     assert.strictEqual(accessorySelect.querySelector(".language-picker-trigger").getAttribute("aria-disabled"), "false");
 
-    const mouthAccessorySelect = harness.content.querySelector(".pet-mouth-accessory-select");
-    assert.strictEqual(getSelectedPickerValue(mouthAccessorySelect), "cigarette");
-    assert.deepStrictEqual(
-      mouthAccessorySelect.querySelectorAll(".language-picker-option").map((option) => option.textContent),
-      ["None", "Cigarette"]
-    );
-    choosePickerOption(mouthAccessorySelect, "none");
-    assert.deepStrictEqual(
-      JSON.parse(JSON.stringify(harness.updates[2])),
-      { key: "petMouthAccessory", value: {} }
-    );
-    await Promise.resolve();
-    await Promise.resolve();
-    await new Promise((resolve) => setImmediate(resolve));
-
     const holidaySwitch = harness.content.querySelector(".holiday-accessory-switch");
     assert.ok(holidaySwitch);
     assert.strictEqual(holidaySwitch.getAttribute("role"), "switch");
     assert.strictEqual(holidaySwitch.getAttribute("aria-checked"), "false");
     holidaySwitch.dispatchEvent({ type: "click" });
     assert.deepStrictEqual(
-      JSON.parse(JSON.stringify(harness.updates[3])),
+      JSON.parse(JSON.stringify(harness.updates[2])),
       {
         key: "holidayAccessoryEnabled",
         value: { clawd: true },
@@ -11652,7 +11639,7 @@ describe("settings renderer browser environment", () => {
 
     holidaySwitch.dispatchEvent({ type: "keydown", key: "Enter", preventDefault() {} });
     assert.deepStrictEqual(
-      JSON.parse(JSON.stringify(harness.updates[4])),
+      JSON.parse(JSON.stringify(harness.updates[3])),
       {
         key: "holidayAccessoryEnabled",
         value: {},
@@ -11680,7 +11667,7 @@ describe("settings renderer browser environment", () => {
       snapshot: {
         petTint: { clawd: "matcha" },
         petAccessory: { clawd: "wizard-hat" },
-        petMouthAccessory: { clawd: "cigarette" },
+        petMouthAccessory: { clawd: "test-mouth" },
         holidayAccessoryEnabled: {},
       },
       petTintOptions: [
@@ -11693,9 +11680,11 @@ describe("settings renderer browser environment", () => {
         { id: "wizard-hat", labelKey: "accessoryWizardHat" },
         { id: "halo", labelKey: "accessoryHalo" },
       ],
+      // A placeholder mouth option keeps the in-place patch covered; the store
+      // catalog itself offers none.
       petMouthAccessoryOptions: [
         { id: "none", labelKey: "accessoryNone" },
-        { id: "cigarette", labelKey: "accessoryCigarette" },
+        { id: "test-mouth", labelKey: "accessoryTestMouth" },
       ],
     });
 

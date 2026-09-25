@@ -308,7 +308,11 @@
     const caps = theme.capabilities || {};
     if (caps.petTint === true) section.appendChild(buildThemeTintRow(theme));
     if (caps.accessories === true) section.appendChild(buildThemeAccessoryRow(theme));
-    if (caps.mouthAccessories === true) section.appendChild(buildThemeMouthAccessoryRow(theme));
+    // The store catalog offers no mouth accessory, so a picker with only "None"
+    // is not shown even for themes that declare mouth attachments.
+    if (caps.mouthAccessories === true && getMouthAccessoryOptions().some((entry) => entry.id !== "none")) {
+      section.appendChild(buildThemeMouthAccessoryRow(theme));
+    }
     if (caps.accessories === true) section.appendChild(buildHolidayAccessoryRow(theme));
     parent.appendChild(section);
   }

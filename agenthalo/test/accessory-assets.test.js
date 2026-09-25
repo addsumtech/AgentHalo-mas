@@ -10,7 +10,24 @@ const {
   PET_MOUTH_ACCESSORY_CATALOG,
 } = require("../src/pet-customization-catalog");
 
+const { minimatch } = require("minimatch");
+const { build } = require("../package.json");
+
 const ASSET_DIR = path.join(__dirname, "..", "assets", "accessories");
+
+// electron-builder semantics: a file ships when the last matching build.files
+// pattern includes it ("!" patterns exclude).
+function isPackaged(file) {
+  let packaged = false;
+  for (const glob of build.files) {
+    if (glob.startsWith("!")) {
+      if (minimatch(file, glob.slice(1))) packaged = false;
+    } else if (minimatch(file, glob)) {
+      packaged = true;
+    }
+  }
+  return packaged;
+}
 const MAX_SMIL_VALUES = 16;
 const MAX_SMIL_DURATION_S = 10;
 const MAX_TRANSLATE_ABS = 16;
@@ -138,13 +155,14 @@ describe("accessory asset audit", () => {
     const catalogAssets = catalogEntries
       .map((entry) => entry.file)
       .sort();
-    const diskAssets = fs.readdirSync(ASSET_DIR)
+    const packagedAssets = fs.readdirSync(ASSET_DIR)
       .filter((file) => file.endsWith(".svg"))
+      .filter((file) => isPackaged(`assets/accessories/${file}`))
       .sort();
 
-    assert.deepStrictEqual(diskAssets, catalogAssets);
+    assert.deepStrictEqual(packagedAssets, catalogAssets);
     assert.strictEqual(new Set(catalogAssets).size, catalogAssets.length, "catalog asset names must not collide");
-    assert.strictEqual(diskAssets.length, 9);
+    assert.strictEqual(packagedAssets.length, 8);
 
     for (const entry of catalogEntries) {
       const source = fs.readFileSync(path.join(ASSET_DIR, entry.file), "utf8");
@@ -180,6 +198,16 @@ describe("accessory asset audit", () => {
     }
   });
 
+  it("keeps the retired cigarette out of the catalog and the store package (4+ rating)", () => {
+    assert.ok(![...PET_ACCESSORY_CATALOG, ...PET_MOUTH_ACCESSORY_CATALOG]
+      .some((entry) => entry.id === "cigarette" || entry.file === "cigarette.svg"));
+    assert.deepStrictEqual(PET_MOUTH_ACCESSORY_CATALOG.map((entry) => entry.id), ["none"]);
+    assert.strictEqual(isPackaged("assets/accessories/cigarette.svg"), false);
+    assert.strictEqual(isPackaged("assets/accessories/halo.svg"), true);
+  });
+
+  // The upstream cigarette.svg stays in the repository (not packaged) as the
+  // reproducible counterpart of its archived PR source.
   it("allows the cigarette's narrow, bounded SMIL grammar and no active references", () => {
     const file = "cigarette.svg";
     const source = fs.readFileSync(path.join(ASSET_DIR, file), "utf8");
