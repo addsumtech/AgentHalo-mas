@@ -33,6 +33,11 @@ const { DEFAULT_INTEGRATION_INSTALLED_IDS } = require("./prefs");
 //      absent". Only an explicit detectedInstalled === false can propose
 //      cleanup, so a detector that threw (main.js falls back to {agents: []})
 //      or that skipped an agent proposes nothing.
+//
+// alwaysOfferIds lists agents to offer for install even when the detector saw
+// nothing. The App Sandbox hides the home directory until the user picks a
+// folder, so the store build cannot detect Claude Code; installing it asks for
+// that folder first.
 const CLEANUP_EXEMPT_AGENT_IDS = new Set(DEFAULT_INTEGRATION_INSTALLED_IDS);
 
 function resolveIconUrl(iconUrlFor, agentId) {
@@ -49,8 +54,10 @@ function bucketAgentsForTutorial({
   detectionAgents,
   agentsPref,
   installableIds,
+  alwaysOfferIds,
   getAgentIconUrl: iconUrlFor,
 } = {}) {
+  const alwaysOffer = new Set(alwaysOfferIds || []);
   const byId = new Map();
   for (const entry of detectionAgents || []) {
     if (entry && typeof entry.agentId === "string") byId.set(entry.agentId, entry);
@@ -75,6 +82,8 @@ function bucketAgentsForTutorial({
     } else if (integrationInstalled && explicitlyMissing && !cleanupExempt) {
       buckets.cleanup.push(item);
     } else if (!integrationInstalled && detected && (confidence === "high" || confidence === "medium")) {
+      buckets.install.push(item);
+    } else if (!integrationInstalled && alwaysOffer.has(agentId)) {
       buckets.install.push(item);
     }
   }

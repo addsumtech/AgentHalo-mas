@@ -120,6 +120,25 @@ describe("bucketAgentsForTutorial", () => {
     assert.strictEqual(result.active.length, 0);
   });
 
+  it("offers an always-offered agent the detector could not see, until it is installed", () => {
+    const offered = bucketAgentsForTutorial({
+      installableIds: INSTALLABLE,
+      detectionAgents: [detect("codex", "Codex CLI", true, "high")],
+      agentsPref: {},
+      alwaysOfferIds: ["claude-code"],
+    });
+    assert.deepStrictEqual(offered.install.map((item) => item.agentId), ["claude-code", "codex"]);
+
+    const installed = bucketAgentsForTutorial({
+      installableIds: INSTALLABLE,
+      detectionAgents: [],
+      agentsPref: { "claude-code": { integrationInstalled: true } },
+      alwaysOfferIds: ["claude-code"],
+    });
+    assert.deepStrictEqual(installed.install, []);
+    assert.deepStrictEqual(installed.cleanup, []);
+  });
+
   // #895 T6c-variant: an entry that exists but carries no verdict is also
   // unknown. Only a strict `false` may propose a deletion.
   it("requires a strict false verdict before proposing cleanup", () => {
