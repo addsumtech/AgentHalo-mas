@@ -25,6 +25,13 @@ const { getBundledNodeLauncherPath } = require("./server-config");
 
 // Hook name (Gemini CLI, Qwen Code, Qoder, QoderWork, QwenWork), Antigravity
 // hook group and CodeWhale section comment of the store build.
+//
+// None of these tools restricts the name: Gemini CLI, Qwen Code and Qoder
+// declare it a plain string with no pattern, and Antigravity's hooks.json maps
+// free-form hook names ("my-linter-hook" in its docs) to their events. It has
+// to differ from the other install's "clawd": Qwen Code keeps one hook per
+// name for an event and matcher, and Gemini CLI's hooksConfig.disabled lists
+// names, so a shared name would drop or disable both installs' hooks together.
 const STORE_HOOK_NAME = "agenthalo-store";
 
 // Entry script the store build writes for each tool, next to the shared hook
