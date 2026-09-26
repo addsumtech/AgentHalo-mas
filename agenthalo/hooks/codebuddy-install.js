@@ -8,7 +8,9 @@ const os = require("os");
 const {
   resolveNodeBin,
   buildPermissionUrl,
+  buildStorePermissionUrl,
   isManagedPermissionUrl,
+  isStorePermissionUrl,
   DEFAULT_SERVER_PORT,
   readRuntimePort,
 } = require("./server-config");
@@ -22,10 +24,23 @@ const {
   removeMatchingCommandHooks,
   removeMatchingHttpHooks,
 } = require("./json-utils");
+const {
+  STORE_HOOK_NAME,
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 const MARKER = "codebuddy-hook.js";
 const DEFAULT_PARENT_DIR = path.join(os.homedir(), ".codebuddy");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_PARENT_DIR, "settings.json");
 const CLAWD_PERMISSION_HOOK_NAME = "clawd-on-desk.permission.v1";
+// Mac App Store build: its PermissionRequest hook's name, and its URL is
+// http://127.0.0.1:<port>/agenthalo-store/approval. Another AgentHalo install
+// owns every hook named CLAWD_PERMISSION_HOOK_NAME and every
+// http://127.0.0.1:<23333-23337>/permission URL.
+const STORE_PERMISSION_HOOK_NAME = `${STORE_HOOK_NAME}.permission.v1`;
 
 // CodeBuddy supported hook events (as of v1.16+)
 const CODEBUDDY_HOOK_EVENTS = [
@@ -85,30 +100,91 @@ function isManagedPermissionHook(hook) {
   return hook.name === CLAWD_PERMISSION_HOOK_NAME || isManagedPermissionUrl(hook.url);
 }
 
-function findManagedPermissionHook(entries) {
+function isStorePermissionHook(hook) {
+  if (!hook || hook.type !== "http") return false;
+  return hook.name === STORE_PERMISSION_HOOK_NAME || isStorePermissionUrl(hook.url);
+}
+
+// Which entries this install owns. Every clawd install owns the commands that
+// mention codebuddy-hook.js and the permission hooks above; the Mac App Store
+// build owns only its own (see hooks/store-hook-ownership.js).
+const CLAWD_CODEBUDDY_OWNERSHIP = Object.freeze({
+  store: false,
+  ownsCommand: (command) => command.includes(MARKER),
+  permissionHookName: CLAWD_PERMISSION_HOOK_NAME,
+  isPermissionHook: isManagedPermissionHook,
+  isManagedUrl: isManagedPermissionUrl,
+  buildUrl: (port) => buildPermissionUrl(port),
+});
+
+function getCodeBuddyHookOwnership(options = {}) {
+  if (!isStoreHookInstall(options)) return CLAWD_CODEBUDDY_OWNERSHIP;
+  return {
+    store: true,
+    ownsCommand: hookCommandOwner(options, { agentId: "codebuddy", marker: MARKER }),
+    permissionHookName: STORE_PERMISSION_HOOK_NAME,
+    isPermissionHook: isStorePermissionHook,
+    isManagedUrl: isStorePermissionUrl,
+    buildUrl: (port) => buildStorePermissionUrl(port),
+  };
+}
+
+function findManagedPermissionHook(entries, isPermissionHook = isManagedPermissionHook) {
   if (!Array.isArray(entries)) return null;
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
     if (Array.isArray(entry.hooks)) {
-      const nested = entry.hooks.find(isManagedPermissionHook);
+      const nested = entry.hooks.find(isPermissionHook);
       if (nested) return nested;
     }
-    if (isManagedPermissionHook(entry)) return entry;
+    if (isPermissionHook(entry)) return entry;
   }
   return null;
 }
 
-function resolvePermissionUrl(permissionTarget, existingHook, hookPort) {
+function resolvePermissionUrl(permissionTarget, existingHook, hookPort, ownership = CLAWD_CODEBUDDY_OWNERSHIP) {
   if (permissionTarget.mode === "custom") return permissionTarget.url;
   if (
     permissionTarget.mode === "preserve"
     && existingHook
-    && existingHook.name === CLAWD_PERMISSION_HOOK_NAME
-    && !isManagedPermissionUrl(existingHook.url)
+    && existingHook.name === ownership.permissionHookName
+    && !ownership.isManagedUrl(existingHook.url)
   ) {
-    return normalizePreservedPermissionUrl(existingHook.url) || buildPermissionUrl(hookPort);
+    return normalizePreservedPermissionUrl(existingHook.url) || ownership.buildUrl(hookPort);
   }
-  return buildPermissionUrl(hookPort);
+  return ownership.buildUrl(hookPort);
+}
+
+// Store build: an earlier store build wrote the shared permission hook (named
+// CLAWD_PERMISSION_HOOK_NAME, posting to http://127.0.0.1:<port>/permission),
+// which any clawd install may own. Remove one only when it cannot be another
+// install's: it posts to the store app's own port and settings.json holds no
+// CodeBuddy command hook of another install.
+function hasForeignCodeBuddyCommandHooks(settings, ownsCommand) {
+  const hooks = settings && settings.hooks;
+  if (!hooks || typeof hooks !== "object") return false;
+  return CODEBUDDY_HOOK_EVENTS.some((event) => {
+    const entries = hooks[event];
+    if (!Array.isArray(entries)) return false;
+    return entries.some((entry) => {
+      if (!entry || typeof entry !== "object") return false;
+      const commands = [entry.command, ...(Array.isArray(entry.hooks) ? entry.hooks.map((h) => h && h.command) : [])];
+      return commands.some((command) => (
+        typeof command === "string" && command.includes(MARKER) && !ownsCommand(command)
+      ));
+    });
+  });
+}
+
+function removeLegacyStorePermissionHooks(settings, hookPort, ownsCommand) {
+  const entries = settings.hooks && settings.hooks.PermissionRequest;
+  if (!Array.isArray(entries) || hasForeignCodeBuddyCommandHooks(settings, ownsCommand)) {
+    return { entries, removed: 0, changed: false };
+  }
+  const legacyUrl = buildPermissionUrl(hookPort);
+  return removeMatchingHttpHooks(entries, (hook) => (
+    !!hook && hook.type === "http" && hook.url === legacyUrl
+  ));
 }
 
 function parsePermissionTargetArgv(argv) {
@@ -143,7 +219,11 @@ function registerCodeBuddyHooks(options = {}) {
     return { added: 0, skipped: 0, updated: 0 };
   }
 
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, "codebuddy-hook.js").replace(/\\/g, "/"));
+  const ownership = getCodeBuddyHookOwnership(options);
+  const { ownsCommand, isPermissionHook, permissionHookName } = ownership;
+  const hookScript = ownership.store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS.codebuddy)
+    : asarUnpackedPath(path.resolve(__dirname, "codebuddy-hook.js").replace(/\\/g, "/"));
 
   let settings = {};
   try {
@@ -155,7 +235,9 @@ function registerCodeBuddyHooks(options = {}) {
   }
 
   // Resolve node path; if detection fails, preserve existing absolute path
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const resolved = ownership.store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
@@ -185,7 +267,7 @@ function registerCodeBuddyHooks(options = {}) {
       if (Array.isArray(innerHooks)) {
         for (const h of innerHooks) {
           if (!h || !h.command) continue;
-          if (!h.command.includes(MARKER)) continue;
+          if (!ownsCommand(h.command)) continue;
           found = true;
           if (h.command !== desiredCommand) {
             h.command = desiredCommand;
@@ -195,7 +277,7 @@ function registerCodeBuddyHooks(options = {}) {
         }
       }
       // Also check flat format for migration
-      if (!found && entry.command && entry.command.includes(MARKER)) {
+      if (!found && entry.command && ownsCommand(entry.command)) {
         found = true;
         if (entry.command !== desiredCommand) {
           entry.command = desiredCommand;
@@ -225,15 +307,23 @@ function registerCodeBuddyHooks(options = {}) {
   }
 
   // Register PermissionRequest HTTP hook (blocking, for permission bubble)
-  const hookPort = readRuntimePort() || DEFAULT_SERVER_PORT;
+  const hookPort = Number.isInteger(options.port) ? options.port : (readRuntimePort() || DEFAULT_SERVER_PORT);
   const permissionTarget = normalizePermissionTarget(options.permissionTarget);
   const permEvent = "PermissionRequest";
   if (!Array.isArray(settings.hooks[permEvent])) {
     settings.hooks[permEvent] = [];
     changed = true;
   }
-  const existingPermissionHook = findManagedPermissionHook(settings.hooks[permEvent]);
-  const permissionUrl = resolvePermissionUrl(permissionTarget, existingPermissionHook, hookPort);
+  if (ownership.store) {
+    const legacy = removeLegacyStorePermissionHooks(settings, hookPort, ownsCommand);
+    if (legacy.changed) {
+      settings.hooks[permEvent] = legacy.entries;
+      updated += legacy.removed;
+      changed = true;
+    }
+  }
+  const existingPermissionHook = findManagedPermissionHook(settings.hooks[permEvent], isPermissionHook);
+  const permissionUrl = resolvePermissionUrl(permissionTarget, existingPermissionHook, hookPort, ownership);
   let permFound = false;
   for (const entry of settings.hooks[permEvent]) {
     if (!entry || typeof entry !== "object") continue;
@@ -243,16 +333,16 @@ function registerCodeBuddyHooks(options = {}) {
         if (!h || h.type !== "http") continue;
         // Only URLs we wrote ourselves are eligible for the in-place port
         // refresh; foreign endpoints are skipped and we append our own entry.
-        if (!isManagedPermissionHook(h)) continue;
+        if (!isPermissionHook(h)) continue;
         permFound = true;
-        if (h.name !== CLAWD_PERMISSION_HOOK_NAME) { h.name = CLAWD_PERMISSION_HOOK_NAME; changed = true; }
+        if (h.name !== permissionHookName) { h.name = permissionHookName; changed = true; }
         if (h.url !== permissionUrl) { h.url = permissionUrl; updated++; changed = true; }
         break;
       }
     }
-    if (!permFound && entry.type === "http" && isManagedPermissionHook(entry)) {
+    if (!permFound && entry.type === "http" && isPermissionHook(entry)) {
       permFound = true;
-      if (entry.name !== CLAWD_PERMISSION_HOOK_NAME) { entry.name = CLAWD_PERMISSION_HOOK_NAME; changed = true; }
+      if (entry.name !== permissionHookName) { entry.name = permissionHookName; changed = true; }
       if (entry.url !== permissionUrl) { entry.url = permissionUrl; updated++; changed = true; }
     }
     if (permFound) break;
@@ -260,7 +350,7 @@ function registerCodeBuddyHooks(options = {}) {
   if (!permFound) {
     settings.hooks[permEvent].push({
       matcher: "",
-      hooks: [{ name: CLAWD_PERMISSION_HOOK_NAME, type: "http", url: permissionUrl, timeout: 600 }],
+      hooks: [{ name: permissionHookName, type: "http", url: permissionUrl, timeout: 600 }],
     });
     added++;
     changed = true;
@@ -293,12 +383,16 @@ function unregisterCodeBuddyHooks(options = {}) {
     return { removed: 0, changed: false, settingsPath };
   }
 
+  const ownership = getCodeBuddyHookOwnership(options);
+  const ownsCommand = ownership.store
+    ? ownership.ownsCommand
+    : (command) => commandMatchesMarker(command, MARKER);
   let removed = 0;
   let changed = false;
   for (const event of CODEBUDDY_HOOK_EVENTS) {
     const entries = settings.hooks[event];
     if (!Array.isArray(entries)) continue;
-    const result = removeMatchingCommandHooks(entries, (command) => commandMatchesMarker(command, MARKER));
+    const result = removeMatchingCommandHooks(entries, ownsCommand);
     if (!result.changed) continue;
     removed += result.removed;
     changed = true;
@@ -307,9 +401,20 @@ function unregisterCodeBuddyHooks(options = {}) {
   }
 
   if (Array.isArray(settings.hooks.PermissionRequest)) {
-    const result = removeMatchingHttpHooks(settings.hooks.PermissionRequest, (hook) =>
-      isManagedPermissionHook(hook)
+    let result = removeMatchingHttpHooks(settings.hooks.PermissionRequest, (hook) =>
+      ownership.isPermissionHook(hook)
     );
+    if (ownership.store) {
+      const port = Number.isInteger(options.port) ? options.port : (readRuntimePort() || DEFAULT_SERVER_PORT);
+      const legacy = removeLegacyStorePermissionHooks(
+        { ...settings, hooks: { ...settings.hooks, PermissionRequest: result.entries } },
+        port,
+        ownsCommand
+      );
+      if (legacy.changed) {
+        result = { entries: legacy.entries, removed: result.removed + legacy.removed, changed: true };
+      }
+    }
     if (result.changed) {
       removed += result.removed;
       changed = true;

@@ -1128,12 +1128,14 @@ function getGeminiHooksSupplementary(settings, descriptor) {
     };
   }
 
+  // The store build names its hook apart from other installs' "clawd".
+  const hookName = descriptor && descriptor.hookName ? descriptor.hookName : "clawd";
   const disabled = Array.isArray(hooksConfig.disabled) ? hooksConfig.disabled : [];
-  if (disabled.includes("clawd")) {
+  if (disabled.includes(hookName)) {
     return {
       key: "gemini_hooks",
       value: "disabled-clawd",
-      detail: 'hooksConfig.disabled includes "clawd"',
+      detail: `hooksConfig.disabled includes "${hookName}"`,
     };
   }
 
@@ -1406,13 +1408,15 @@ function applyZcodeSupplementary(detail, descriptor, settings) {
   };
 }
 
-function getAntigravityHooksSupplementary(settings) {
-  const hookGroup = settings && typeof settings === "object" ? settings[ANTIGRAVITY_HOOK_GROUP_ID] : null;
+function getAntigravityHooksSupplementary(settings, descriptor) {
+  // The store build keeps its hooks in a group of its own.
+  const groupId = descriptor && descriptor.hookName ? descriptor.hookName : ANTIGRAVITY_HOOK_GROUP_ID;
+  const hookGroup = settings && typeof settings === "object" ? settings[groupId] : null;
   if (hookGroup && typeof hookGroup === "object" && hookGroup.enabled === false) {
     return {
       key: "antigravity_hooks",
       value: "disabled-clawd",
-      detail: `${ANTIGRAVITY_HOOK_GROUP_ID}.enabled is false`,
+      detail: `${groupId}.enabled is false`,
     };
   }
   return {
@@ -1425,7 +1429,7 @@ function getAntigravityHooksSupplementary(settings) {
 function applyAntigravitySupplementary(detail, descriptor, settings) {
   if (descriptor.agentId !== "antigravity-cli") return detail;
 
-  const supplementary = getAntigravityHooksSupplementary(settings);
+  const supplementary = getAntigravityHooksSupplementary(settings, descriptor);
   if (supplementary.value !== "enabled") {
     return {
       ...detail,

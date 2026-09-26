@@ -115,7 +115,9 @@ async function main(deps = {}) {
   process.stdout.write(`${text}\n`);
 }
 
-if (require.main === module) {
+// What `node antigravity-statusline.js` runs; the store build's entry script runs it too
+// (see hooks/store-hook-ownership.js).
+function runCli() {
   main().catch(() => {
     process.stdout.write("\n");
   }).finally(() => {
@@ -123,7 +125,10 @@ if (require.main === module) {
   });
 }
 
+if (require.main === module) runCli();
+
 module.exports = {
+  runCli,
   __test: {
     normalizeSessionId,
     buildStatusLineText,

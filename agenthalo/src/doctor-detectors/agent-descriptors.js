@@ -28,6 +28,29 @@ const qwenwork = require("../../hooks/qwenwork-install");
 const workbuddy = require("../../hooks/workbuddy-install");
 const traecode = require("../../hooks/traecode-install");
 const dsh = require("../../hooks/dsh-install");
+const {
+  STORE_HOOK_NAME,
+  STORE_HOOK_SCRIPTS,
+  isStoreHookInstall,
+} = require("../../hooks/store-hook-ownership");
+
+// The Mac App Store build's hooks run entry scripts of its own and use their
+// own hook names; entries naming the shared scripts or "clawd" there belong to
+// another AgentHalo install (see hooks/store-hook-ownership.js).
+const STORE_HOOKS = isStoreHookInstall();
+
+function hookMarker(agentId, marker) {
+  return STORE_HOOKS ? STORE_HOOK_SCRIPTS[agentId] : marker;
+}
+
+function hookName(name) {
+  return STORE_HOOKS ? STORE_HOOK_NAME : name;
+}
+
+// Gemini CLI hook name / Antigravity hook group (Doctor defaults to "clawd").
+function storeHookName() {
+  return STORE_HOOKS ? { hookName: STORE_HOOK_NAME } : {};
+}
 
 function agentName(agentId) {
   const agent = getAgent(agentId);
@@ -61,7 +84,7 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: codex.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: "codex-hook.js",
+    marker: hookMarker("codex", "codex-hook.js"),
     nested: true,
     supplementary: {
       key: "hooks",
@@ -77,9 +100,9 @@ const AGENT_DESCRIPTORS = Object.freeze([
     settingsPath: copilot.resolveCopilotSettingsPath(),
     configMode: "copilot-hooks",
     autoInstall: true,
-    marker: copilot.MARKER,
+    marker: hookMarker("copilot-cli", copilot.MARKER),
     hookEvents: copilot.COPILOT_HOOK_EVENTS,
-    scriptPath: path.join(__dirname, "..", "..", "hooks", "copilot-hook.js"),
+    scriptPath: path.join(__dirname, "..", "..", "hooks", hookMarker("copilot-cli", "copilot-hook.js")),
   }),
   Object.freeze({
     agentId: "cursor-agent",
@@ -89,7 +112,7 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: cursor.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: "cursor-hook.js",
+    marker: hookMarker("cursor-agent", "cursor-hook.js"),
     nested: false,
   }),
   Object.freeze({
@@ -100,7 +123,8 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: gemini.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: "gemini-hook.js",
+    marker: hookMarker("gemini-cli", "gemini-hook.js"),
+    ...storeHookName(),
     nested: true,
   }),
   Object.freeze({
@@ -111,7 +135,8 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: antigravity.DEFAULT_CONFIG_PATH,
     configMode: "antigravity-hooks",
     autoInstall: true,
-    marker: antigravity.MARKER,
+    marker: hookMarker("antigravity-cli", antigravity.MARKER),
+    ...storeHookName(),
     hookEvents: antigravity.ANTIGRAVITY_HOOK_EVENTS,
   }),
   Object.freeze({
@@ -122,7 +147,7 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: codebuddy.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: "codebuddy-hook.js",
+    marker: hookMarker("codebuddy", "codebuddy-hook.js"),
     nested: true,
   }),
   Object.freeze({
@@ -149,7 +174,7 @@ const AGENT_DESCRIPTORS = Object.freeze([
     ]),
     configMode: "file",
     autoInstall: true,
-    marker: workbuddy.MARKER,
+    marker: hookMarker("workbuddy", workbuddy.MARKER),
     nested: true,
     hookEvents: workbuddy.WORKBUDDY_HOOK_EVENTS,
   }),
@@ -197,7 +222,7 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: qwen.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: qwen.MARKER,
+    marker: hookMarker("qwen-code", qwen.MARKER),
     nested: true,
     hookEvents: qwen.QWEN_CODE_HOOK_EVENTS,
   }),
@@ -209,7 +234,7 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: zcode.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: zcode.MARKER,
+    marker: hookMarker("zcode", zcode.MARKER),
     nested: true,
     hookEvents: zcode.ZCODE_HOOK_EVENTS,
     hookExecutorShape: "zcode-process",
@@ -228,8 +253,8 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: codewhale.resolveCodewhaleConfigPath(),
     configMode: "codewhale-hooks-toml",
     autoInstall: true,
-    marker: "managed by clawd-on-desk",
-    commandMarker: "codewhale-hook.js",
+    marker: STORE_HOOKS ? codewhale.STORE_MANAGED_MARKER : "managed by clawd-on-desk",
+    commandMarker: hookMarker("codewhale", "codewhale-hook.js"),
     nested: true,
     hookEvents: codewhale.HOOK_ENTRIES.map((entry) => entry[0]),
   }),
@@ -326,10 +351,10 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: qoder.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: qoder.MARKER,
+    marker: hookMarker("qoder", qoder.MARKER),
     nested: true,
     hookEvents: qoder.QODER_HOOK_EVENTS,
-    hookGroupId: "clawd",
+    hookGroupId: hookName("clawd"),
   }),
   Object.freeze({
     agentId: "reasonix",
@@ -341,7 +366,7 @@ const AGENT_DESCRIPTORS = Object.freeze([
     preferExistingConfigFile: true,
     configMode: "file",
     autoInstall: true,
-    marker: reasonix.MARKER,
+    marker: hookMarker("reasonix", reasonix.MARKER),
     nested: true,
     hookEvents: reasonix.REASONIX_HOOK_EVENTS,
   }),
@@ -353,10 +378,10 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: qoderwork.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: qoderwork.MARKER,
+    marker: hookMarker("qoderwork", qoderwork.MARKER),
     nested: true,
     hookEvents: qoderwork.QODERWORK_HOOK_EVENTS,
-    hookGroupId: "clawd",
+    hookGroupId: hookName("clawd"),
   }),
   Object.freeze({
     agentId: "traecode",
@@ -366,7 +391,7 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: traecode.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: traecode.MARKER,
+    marker: hookMarker("traecode", traecode.MARKER),
     nested: true,
     hookEvents: traecode.TRAECODE_HOOK_EVENTS,
   }),
@@ -378,10 +403,10 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: qwenwork.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: qwenwork.MARKER,
+    marker: hookMarker("qwenwork", qwenwork.MARKER),
     nested: true,
     hookEvents: qwenwork.QWENWORK_HOOK_EVENTS,
-    hookGroupId: "clawd",
+    hookGroupId: hookName("clawd"),
   }),
   Object.freeze({
     agentId: "deepseek-harness",

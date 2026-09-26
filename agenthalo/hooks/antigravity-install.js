@@ -16,6 +16,15 @@ const {
   extractFirstQuotedToken,
   windowsPowerShellBin,
 } = require("./json-utils");
+const {
+  STORE_HOOK_NAME,
+  STORE_HOOK_SCRIPTS,
+  isLegacyStoreCommand,
+  isStoreHookInstall,
+  isStoreOwnedCommand,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 
 const HOOK_GROUP_ID = "clawd";
 const MARKER = "antigravity-hook.js";
@@ -335,6 +344,34 @@ function extractExistingAntigravityNodeBin(existingGroup) {
   return null;
 }
 
+// Which hook group and statusline this install owns. Every clawd install owns
+// the "clawd" group and a statusline that mentions antigravity-statusline.js;
+// the Mac App Store build owns its own group and statusline script (see
+// hooks/store-hook-ownership.js).
+function getAntigravityHookGroupId(options = {}) {
+  return isStoreHookInstall(options) ? STORE_HOOK_NAME : HOOK_GROUP_ID;
+}
+
+function isAntigravityStatuslineOwned(command, options = {}) {
+  if (typeof command !== "string") return false;
+  if (!isStoreHookInstall(options)) return command.includes(STATUSLINE_MARKER);
+  return isStoreOwnedCommand(command, STORE_HOOK_SCRIPTS["antigravity-statusline"], STATUSLINE_MARKER);
+}
+
+function readHookGroup(settings, groupId) {
+  const group = settings[groupId];
+  return group && typeof group === "object" && !Array.isArray(group) ? group : null;
+}
+
+// Store build: an earlier store build wrote its commands into the shared
+// "clawd" group. That group is ours to move only while every AgentHalo command
+// in it runs this bundle's antigravity-hook.js through this bundle's launcher.
+function isLegacyStoreHookGroup(group) {
+  if (!group) return false;
+  const commands = ANTIGRAVITY_HOOK_EVENTS.flatMap((event) => collectHookCommandsFromEntries(group[event]));
+  return commands.length > 0 && commands.every((command) => isLegacyStoreCommand(command, MARKER));
+}
+
 function resolveAntigravityNodeBin(options = {}) {
   if (options.nodeBin !== undefined) return options.nodeBin;
   return resolveNodeBin(options);
@@ -386,13 +423,25 @@ function registerAntigravityHooks(options = {}) {
   }
 
   const settings = normalizeSettings(readJsonIfExists(configPath));
-  const existingGroup = settings[HOOK_GROUP_ID] && typeof settings[HOOK_GROUP_ID] === "object" && !Array.isArray(settings[HOOK_GROUP_ID])
-    ? settings[HOOK_GROUP_ID]
+  const store = isStoreHookInstall(options);
+  const groupId = getAntigravityHookGroupId(options);
+  let existingGroup = readHookGroup(settings, groupId);
+  const legacyGroup = store && isLegacyStoreHookGroup(readHookGroup(settings, HOOK_GROUP_ID))
+    ? readHookGroup(settings, HOOK_GROUP_ID)
     : null;
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, "antigravity-hook.js").replace(/\\/g, "/"));
-  const nodeBin = resolveAntigravityNodeBin(options)
-    || extractExistingAntigravityNodeBin(existingGroup)
-    || "node";
+  if (legacyGroup) {
+    // Move the earlier store build's group under the store's own id.
+    delete settings[HOOK_GROUP_ID];
+    if (!existingGroup) existingGroup = legacyGroup;
+  }
+  const hookScript = store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS["antigravity-cli"])
+    : asarUnpackedPath(path.resolve(__dirname, "antigravity-hook.js").replace(/\\/g, "/"));
+  const nodeBin = store
+    ? storeNodeBin(options)
+    : (resolveAntigravityNodeBin(options)
+      || extractExistingAntigravityNodeBin(existingGroup)
+      || "node");
   const desiredGroup = buildAntigravityHooks((event) => buildAntigravityHookCommand(nodeBin, hookScript, event, options))[HOOK_GROUP_ID];
 
   let added = 0;
@@ -415,9 +464,9 @@ function registerAntigravityHooks(options = {}) {
     }
   }
 
-  const changed = !existingGroup || JSON.stringify(existingGroup) !== JSON.stringify(desiredGroup);
+  const changed = !!legacyGroup || !existingGroup || JSON.stringify(existingGroup) !== JSON.stringify(desiredGroup);
   if (changed) {
-    settings[HOOK_GROUP_ID] = desiredGroup;
+    settings[groupId] = desiredGroup;
     writeJsonAtomic(configPath, settings);
   }
 
@@ -429,24 +478,47 @@ function registerAntigravityHooks(options = {}) {
   return { installed: true, added, updated, skipped, configPath };
 }
 
-function groupHasClawdMarker(group) {
+function groupHasClawdMarker(group, options = {}) {
   if (!group || typeof group !== "object" || Array.isArray(group)) return false;
+  if (isStoreHookInstall(options)) {
+    const storeScript = STORE_HOOK_SCRIPTS["antigravity-cli"];
+    return ANTIGRAVITY_HOOK_EVENTS.some((event) =>
+      collectHookCommands(group[event]).some((command) => isStoreOwnedCommand(command, storeScript, MARKER))
+    );
+  }
   return ANTIGRAVITY_HOOK_EVENTS.some((event) =>
     collectHookCommandsFromEntries(group[event]).length > 0
   );
+}
+
+function collectHookCommands(entries) {
+  const commands = [];
+  if (!Array.isArray(entries)) return commands;
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    if (typeof entry.command === "string") commands.push(entry.command);
+    if (!Array.isArray(entry.hooks)) continue;
+    for (const hook of entry.hooks) {
+      if (hook && typeof hook.command === "string") commands.push(hook.command);
+    }
+  }
+  return commands;
 }
 
 function unregisterAntigravityHooks(options = {}) {
   const homeDir = options.homeDir || os.homedir();
   const configPath = options.configPath || path.join(homeDir, ".gemini", "config", "hooks.json");
   const settings = normalizeSettings(readJsonIfExists(configPath));
-  const group = settings[HOOK_GROUP_ID];
+  const groupId = getAntigravityHookGroupId(options);
+  const group = settings[groupId];
+  const legacyGroup = isStoreHookInstall(options) && isLegacyStoreHookGroup(readHookGroup(settings, HOOK_GROUP_ID));
 
-  if (!groupHasClawdMarker(group)) {
+  if (!groupHasClawdMarker(group, options) && !legacyGroup) {
     return { installed: !!group, removed: 0, changed: false, configPath };
   }
 
-  delete settings[HOOK_GROUP_ID];
+  if (groupHasClawdMarker(group, options)) delete settings[groupId];
+  if (legacyGroup) delete settings[HOOK_GROUP_ID];
   const backupPath = writeJsonAtomicWithBackup(configPath, settings, options);
   if (!options.silent) console.log(`Clawd Antigravity hook group removed -> ${configPath}`);
   const result = { installed: true, removed: 1, changed: true, configPath };
@@ -485,15 +557,18 @@ function registerAntigravityStatusline(options = {}) {
 
   const settings = normalizeSettings(readJsonIfExists(settingsPath));
   const existing = settings.statusLine && typeof settings.statusLine === "object" ? settings.statusLine : null;
-  const existingIsOurs = !!(existing && typeof existing.command === "string" && existing.command.includes(STATUSLINE_MARKER));
+  const existingIsOurs = !!(existing && isAntigravityStatuslineOwned(existing.command, options));
 
   if (existing && !existingIsOurs) {
     if (!options.silent) console.log(`AgentHalo: existing Antigravity statusline detected at ${settingsPath} - leaving it in place`);
     return { installed: true, changed: false, skippedExisting: true, settingsPath };
   }
 
-  const scriptPath = asarUnpackedPath(path.resolve(__dirname, "antigravity-statusline.js").replace(/\\/g, "/"));
-  const nodeBin = resolveAntigravityNodeBin(options) || "node";
+  const store = isStoreHookInstall(options);
+  const scriptPath = store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS["antigravity-statusline"])
+    : asarUnpackedPath(path.resolve(__dirname, "antigravity-statusline.js").replace(/\\/g, "/"));
+  const nodeBin = store ? storeNodeBin(options) : (resolveAntigravityNodeBin(options) || "node");
   const desired = {
     type: "",
     command: buildAntigravityStatuslineCommand(nodeBin, scriptPath, options),
@@ -518,7 +593,7 @@ function unregisterAntigravityStatusline(options = {}) {
   const settingsPath = options.settingsPath || path.join(homeDir, ".gemini", "antigravity-cli", "settings.json");
   const settings = normalizeSettings(readJsonIfExists(settingsPath));
   const existing = settings.statusLine && typeof settings.statusLine === "object" ? settings.statusLine : null;
-  const existingIsOurs = !!(existing && typeof existing.command === "string" && existing.command.includes(STATUSLINE_MARKER));
+  const existingIsOurs = !!(existing && isAntigravityStatuslineOwned(existing.command, options));
 
   if (!existingIsOurs) {
     return { installed: !!existing, removed: 0, changed: false, settingsPath };

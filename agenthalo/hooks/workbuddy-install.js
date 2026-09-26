@@ -20,6 +20,13 @@ const {
   removeMatchingCommandHooks,
   removeMatchingHttpHooks,
 } = require("./json-utils");
+const {
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 const MARKER = "workbuddy-hook.js";
 const CURRENT_PARENT_DIR = path.join(os.homedir(), ".workbuddy-ai");
 const CURRENT_CONFIG_PATH = path.join(CURRENT_PARENT_DIR, "settings.json");
@@ -95,7 +102,17 @@ function registerWorkBuddyHooks(options = {}) {
     return { added: 0, skipped: 0, updated: 0, settingsPath };
   }
 
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, "workbuddy-hook.js").replace(/\\/g, "/"));
+  // Every clawd install owns the commands that mention workbuddy-hook.js; the
+  // Mac App Store build owns only its own (see hooks/store-hook-ownership.js).
+  const store = isStoreHookInstall(options);
+  const ownsCommand = hookCommandOwner(options, {
+    agentId: "workbuddy",
+    marker: MARKER,
+    matchesMarker: (command) => command.includes(MARKER),
+  });
+  const hookScript = store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS.workbuddy)
+    : asarUnpackedPath(path.resolve(__dirname, "workbuddy-hook.js").replace(/\\/g, "/"));
 
   let settings = {};
   try {
@@ -107,7 +124,9 @@ function registerWorkBuddyHooks(options = {}) {
   }
 
   // Resolve node path; if detection fails, preserve existing absolute path
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const resolved = store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
@@ -137,7 +156,7 @@ function registerWorkBuddyHooks(options = {}) {
       if (Array.isArray(innerHooks)) {
         for (const h of innerHooks) {
           if (!h || !h.command) continue;
-          if (!h.command.includes(MARKER)) continue;
+          if (!ownsCommand(h.command)) continue;
           found = true;
           if (h.command !== desiredCommand) {
             h.command = desiredCommand;
@@ -147,7 +166,7 @@ function registerWorkBuddyHooks(options = {}) {
         }
       }
       // Also check flat format for migration
-      if (!found && entry.command && entry.command.includes(MARKER)) {
+      if (!found && entry.command && ownsCommand(entry.command)) {
         found = true;
         if (entry.command !== desiredCommand) {
           entry.command = desiredCommand;
@@ -183,8 +202,9 @@ function registerWorkBuddyHooks(options = {}) {
   // register it — and anyone who ran an old installer should have the dead
   // managed URL pruned. This is strictly marker-scoped: only URLs WE wrote
   // (isManagedPermissionUrl) are removed; a user's own foreign PermissionRequest
-  // endpoint is left completely untouched.
-  if (Array.isArray(settings.hooks.PermissionRequest)) {
+  // endpoint is left completely untouched. The store build never wrote one, and
+  // such a URL may be another install's, so it leaves them all alone.
+  if (!store && Array.isArray(settings.hooks.PermissionRequest)) {
     const cleanup = removeMatchingHttpHooks(settings.hooks.PermissionRequest, (hook) =>
       hook && hook.type === "http" && isManagedPermissionUrl(hook.url)
     );
@@ -278,12 +298,16 @@ function unregisterWorkBuddyHooksAtPath(settingsPath, options = {}) {
     return { removed: 0, changed: false, settingsPath };
   }
 
+  const store = isStoreHookInstall(options);
+  const ownsCommand = store
+    ? hookCommandOwner(options, { agentId: "workbuddy", marker: MARKER })
+    : (command) => commandMatchesMarker(command, MARKER);
   let removed = 0;
   let changed = false;
   for (const event of WORKBUDDY_HOOK_EVENTS) {
     const entries = settings.hooks[event];
     if (!Array.isArray(entries)) continue;
-    const result = removeMatchingCommandHooks(entries, (command) => commandMatchesMarker(command, MARKER));
+    const result = removeMatchingCommandHooks(entries, ownsCommand);
     if (!result.changed) continue;
     removed += result.removed;
     changed = true;
@@ -291,7 +315,7 @@ function unregisterWorkBuddyHooksAtPath(settingsPath, options = {}) {
     else delete settings.hooks[event];
   }
 
-  if (Array.isArray(settings.hooks.PermissionRequest)) {
+  if (!store && Array.isArray(settings.hooks.PermissionRequest)) {
     const result = removeMatchingHttpHooks(settings.hooks.PermissionRequest, (hook) =>
       hook && hook.type === "http" && isManagedPermissionUrl(hook.url)
     );

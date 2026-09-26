@@ -552,14 +552,19 @@ async function main(argvEvent = process.argv[2], deps = {}) {
   }
 }
 
-if (require.main === module) {
+// What `node zcode-hook.js` runs; the store build's entry script runs it too
+// (see hooks/store-hook-ownership.js).
+function runCli() {
   main().then(() => process.exit(0), () => {
     process.stdout.write(`${buildNoDecisionOutput()}\n`);
     process.exit(0);
   });
 }
 
+if (require.main === module) runCli();
+
 module.exports = {
+  runCli,
   EVENT_TO_PID_LIFECYCLE,
   EVENT_TO_STATE,
   ZCODE_PERMISSION_HTTP_TIMEOUT_MS,

@@ -23,6 +23,13 @@ const {
   asarUnpackedPath,
 } = require("./json-utils");
 const { resolveNodeBin } = require("./server-config");
+const {
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 
 const MARKER = "copilot-hook.js";
 
@@ -179,9 +186,12 @@ function buildCopilotHookEntry(nodeBin, hookScript, eventName, options = {}) {
 //
 // The doctor surfaces a warning when this path is hit so the user can
 // opt in manually.
-function isCopilotPermissionRegistrable(arr) {
+//
+// options.storeHooks: whose entries count as AgentHalo's (defaults to this
+// build's, see getCopilotEntryOwner).
+function isCopilotPermissionRegistrable(arr, options = {}) {
   if (!Array.isArray(arr) || arr.length === 0) return true;
-  return arr.every(entryHasMarker);
+  return arr.every(getCopilotEntryOwner(options));
 }
 
 // Return true if any `*.json` file in `<copilot-home>/hooks/` OTHER than
@@ -254,6 +264,19 @@ function entryMatches(existing, desired) {
 }
 
 function entryHasMarker(entry) {
+  return entryIsOwned(entry, (value) => value.includes(MARKER));
+}
+
+// Which hooks.json entries this install owns. Every clawd install owns the
+// entries that mention copilot-hook.js; the Mac App Store build owns only its
+// own (see hooks/store-hook-ownership.js).
+function getCopilotEntryOwner(options = {}) {
+  if (!isStoreHookInstall(options)) return entryHasMarker;
+  const ownsCommand = hookCommandOwner(options, { agentId: "copilot-cli", marker: MARKER });
+  return (entry) => entryIsOwned(entry, ownsCommand);
+}
+
+function entryIsOwned(entry, ownsCommand) {
   if (!entry || typeof entry !== "object") return false;
   // Match doctor's scan in findCopilotHookCommandsForEvent: any of the three
   // platform fields (bash / powershell / legacy `command`) counts. Otherwise
@@ -262,7 +285,7 @@ function entryHasMarker(entry) {
   // would fire two HTTP state posts.
   for (const field of ["bash", "powershell", "command"]) {
     const value = entry[field];
-    if (typeof value === "string" && value.includes(MARKER)) return true;
+    if (typeof value === "string" && ownsCommand(value)) return true;
   }
   return false;
 }
@@ -300,16 +323,22 @@ function registerCopilotHooks(options = {}) {
     }
   }
 
+  const store = isStoreHookInstall(options);
+  const ownsEntry = getCopilotEntryOwner(options);
   const hookScript = options.hookScript
-    || asarUnpackedPath(path.resolve(__dirname, "copilot-hook.js").replace(/\\/g, "/"));
+    || (store
+      ? storeHookScriptPath(STORE_HOOK_SCRIPTS["copilot-cli"])
+      : asarUnpackedPath(path.resolve(__dirname, "copilot-hook.js").replace(/\\/g, "/")));
 
   // Remote installs keep using this process' Node executable so the SSH host
   // doesn't need a working PATH. Local installs go through the shared resolver
   // so Windows users get an absolute path (issue #317) instead of bare "node".
-  const localResolved = options.remote === true ? null : resolveNodeBin(options);
-  const nodeBin = options.nodeBin
-    || (options.remote === true ? process.execPath : localResolved)
-    || "node";
+  const localResolved = options.remote === true || store ? null : resolveNodeBin(options);
+  const nodeBin = store
+    ? storeNodeBin(options)
+    : (options.nodeBin
+      || (options.remote === true ? process.execPath : localResolved)
+      || "node");
 
   let settings = {};
   try {
@@ -367,12 +396,12 @@ function registerCopilotHooks(options = {}) {
     // a warning afterwards so the user can wire Clawd in manually if they
     // want to.
     if (event === "permissionRequest"
-        && (!isCopilotPermissionRegistrable(arr)
+        && (!isCopilotPermissionRegistrable(arr, options)
             || hasOtherFilePermissionHook
             || hasInlineSettingsHook)) {
       permissionSkippedDueToUserHook = true;
       const beforeLen = arr.length;
-      const cleaned = arr.filter((entry) => !entryHasMarker(entry));
+      const cleaned = arr.filter((entry) => !ownsEntry(entry));
       if (cleaned.length !== beforeLen) {
         settings.hooks[event] = cleaned;
         changed = true;
@@ -387,7 +416,7 @@ function registerCopilotHooks(options = {}) {
       env: options.env || process.env,
     });
 
-    const idx = arr.findIndex(entryHasMarker);
+    const idx = arr.findIndex(ownsEntry);
 
     if (idx === -1) {
       arr.push(desired);
@@ -436,12 +465,13 @@ function unregisterCopilotHooks(options = {}) {
     return { removed: 0, changed: false, configChanged: false, hooksPath };
   }
 
+  const ownsEntry = getCopilotEntryOwner(options);
   let removed = 0;
   let changed = false;
   for (const event of Object.keys(settings.hooks)) {
     const entries = settings.hooks[event];
     if (!Array.isArray(entries)) continue;
-    const next = entries.filter((entry) => !entryHasMarker(entry));
+    const next = entries.filter((entry) => !ownsEntry(entry));
     if (next.length === entries.length) continue;
     removed += entries.length - next.length;
     changed = true;

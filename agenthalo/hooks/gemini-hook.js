@@ -209,14 +209,19 @@ async function main(argvEvent = process.argv[2], deps = {}) {
   finish(outLine);
 }
 
-if (require.main === module) {
+// What `node gemini-hook.js` runs; the store build's entry script runs it too
+// (see hooks/store-hook-ownership.js).
+function runCli() {
   // Arm the safety timer only on the CLI path so importing this module in tests
   // never leaves a stray timer that pollutes stdout or kills the test runner.
   safetyTimer = setTimeout(() => finish("{}"), SAFETY_TIMEOUT_MS);
   main().catch(() => finish("{}"));
 }
 
+if (require.main === module) runCli();
+
 module.exports = {
+  runCli,
   __test: {
     buildStateBody,
     resolveHookName,

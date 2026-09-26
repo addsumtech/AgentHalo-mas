@@ -16,8 +16,17 @@ const {
   formatNodeHookCommand,
   decodeWindowsEncodedCommand,
 } = require("./json-utils");
+const {
+  STORE_HOOK_NAME,
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 
 const MARKER = "qoderwork-hook.js";
+const HOOK_NAME = "clawd";
 const DEFAULT_PARENT_DIR = path.join(os.homedir(), ".qoderwork");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_PARENT_DIR, "settings.json");
 
@@ -45,10 +54,28 @@ function isClawdHookCommand(command) {
   return !!(decoded && decoded.includes(MARKER));
 }
 
-function buildQoderWorkHookEntry(command) {
+// Which entries this install owns. Every clawd install owns the commands that
+// mention qoderwork-hook.js and the hook name "clawd"; the Mac App Store build
+// owns only its own (see hooks/store-hook-ownership.js).
+const CLAWD_QODERWORK_OWNERSHIP = Object.freeze({
+  store: false,
+  hookName: HOOK_NAME,
+  ownsCommand: isClawdHookCommand,
+});
+
+function getQoderWorkHookOwnership(options = {}) {
+  if (!isStoreHookInstall(options)) return CLAWD_QODERWORK_OWNERSHIP;
+  return {
+    store: true,
+    hookName: STORE_HOOK_NAME,
+    ownsCommand: hookCommandOwner(options, { agentId: "qoderwork", marker: MARKER }),
+  };
+}
+
+function buildQoderWorkHookEntry(command, hookName = HOOK_NAME) {
   return {
     matcher: "*",
-    hooks: [{ name: "clawd", type: "command", command }],
+    hooks: [{ name: hookName, type: "command", command }],
   };
 }
 
@@ -71,7 +98,7 @@ function replaceEntry(target, source) {
   Object.assign(target, source);
 }
 
-function isDesiredQoderWorkHookEntry(entry, desiredCommand) {
+function isDesiredQoderWorkHookEntry(entry, desiredCommand, hookName = HOOK_NAME) {
   return !!(
     entry
     && typeof entry === "object"
@@ -79,15 +106,16 @@ function isDesiredQoderWorkHookEntry(entry, desiredCommand) {
     && Array.isArray(entry.hooks)
     && entry.hooks.length === 1
     && entry.hooks[0]
-    && entry.hooks[0].name === "clawd"
+    && entry.hooks[0].name === hookName
     && entry.hooks[0].type === "command"
     && entry.hooks[0].command === desiredCommand
   );
 }
 
-function normalizeQoderWorkHookEntries(entries, desiredCommand) {
+function normalizeQoderWorkHookEntries(entries, desiredCommand, ownership = CLAWD_QODERWORK_OWNERSHIP) {
   if (!Array.isArray(entries)) return { matched: false, changed: false };
 
+  const { hookName, ownsCommand } = ownership;
   let matched = false;
   let changed = false;
   let dedicatedIndex = -1;
@@ -97,10 +125,10 @@ function normalizeQoderWorkHookEntries(entries, desiredCommand) {
     if (!entry || typeof entry !== "object") continue;
 
     // Legacy flat Clawd entry ({ command }) — normalize into the nested shape.
-    if (isClawdHookCommand(entry.command)) {
+    if (ownsCommand(entry.command)) {
       matched = true;
       if (dedicatedIndex === -1) {
-        replaceEntry(entry, buildQoderWorkHookEntry(desiredCommand));
+        replaceEntry(entry, buildQoderWorkHookEntry(desiredCommand, hookName));
         dedicatedIndex = index;
         changed = true;
       } else {
@@ -115,7 +143,7 @@ function normalizeQoderWorkHookEntries(entries, desiredCommand) {
     const otherHooks = [];
     let clawdHookCount = 0;
     for (const hook of entry.hooks) {
-      if (hook && isClawdHookCommand(hook.command)) {
+      if (hook && ownsCommand(hook.command)) {
         clawdHookCount++;
       } else {
         otherHooks.push(hook);
@@ -132,8 +160,8 @@ function normalizeQoderWorkHookEntries(entries, desiredCommand) {
     }
 
     if (dedicatedIndex === -1) {
-      if (!isDesiredQoderWorkHookEntry(entry, desiredCommand)) {
-        replaceEntry(entry, buildQoderWorkHookEntry(desiredCommand));
+      if (!isDesiredQoderWorkHookEntry(entry, desiredCommand, hookName)) {
+        replaceEntry(entry, buildQoderWorkHookEntry(desiredCommand, hookName));
         changed = true;
       }
       dedicatedIndex = index;
@@ -148,13 +176,13 @@ function normalizeQoderWorkHookEntries(entries, desiredCommand) {
   if (!matched) return { matched: false, changed: false };
 
   if (dedicatedIndex === -1) {
-    entries.push(buildQoderWorkHookEntry(desiredCommand));
+    entries.push(buildQoderWorkHookEntry(desiredCommand, hookName));
     return { matched: true, changed: true };
   }
 
   const dedicatedEntry = entries[dedicatedIndex];
-  if (!isDesiredQoderWorkHookEntry(dedicatedEntry, desiredCommand)) {
-    replaceEntry(dedicatedEntry, buildQoderWorkHookEntry(desiredCommand));
+  if (!isDesiredQoderWorkHookEntry(dedicatedEntry, desiredCommand, hookName)) {
+    replaceEntry(dedicatedEntry, buildQoderWorkHookEntry(desiredCommand, hookName));
     changed = true;
   }
   return { matched: true, changed };
@@ -163,16 +191,17 @@ function normalizeQoderWorkHookEntries(entries, desiredCommand) {
 // QoderWork's `hooksConfig.disabled` list can name a hook group by id ("clawd")
 // or by raw command. Collapse Clawd command references into the "clawd" id and
 // de-duplicate so Doctor can reliably see whether our group is disabled.
-function normalizeQoderWorkDisabledHooks(settings) {
+function normalizeQoderWorkDisabledHooks(settings, ownership = CLAWD_QODERWORK_OWNERSHIP) {
   const hooksConfig = settings && typeof settings === "object" ? settings.hooksConfig : null;
   if (!hooksConfig || typeof hooksConfig !== "object" || !Array.isArray(hooksConfig.disabled)) return false;
 
+  const { hookName, ownsCommand } = ownership;
   let changed = false;
   let sawClawd = false;
   const nextDisabled = [];
 
   for (const entry of hooksConfig.disabled) {
-    if (entry === "clawd") {
+    if (entry === hookName) {
       if (sawClawd) {
         changed = true;
         continue;
@@ -182,9 +211,9 @@ function normalizeQoderWorkDisabledHooks(settings) {
       continue;
     }
 
-    if (isClawdHookCommand(entry)) {
+    if (ownsCommand(entry)) {
       if (!sawClawd) {
-        nextDisabled.push("clawd");
+        nextDisabled.push(hookName);
         sawClawd = true;
       }
       changed = true;
@@ -229,10 +258,15 @@ function registerQoderWorkHooks(options = {}) {
   }
 
   const settings = readSettings(settingsPath);
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
+  const ownership = getQoderWorkHookOwnership(options);
+  const hookScript = ownership.store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS.qoderwork)
+    : asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
 
   // Resolve node path; if detection fails, preserve any existing absolute path.
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const resolved = ownership.store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
@@ -243,7 +277,7 @@ function registerQoderWorkHooks(options = {}) {
   let changed = false;
 
   if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
-  if (normalizeQoderWorkDisabledHooks(settings)) changed = true;
+  if (normalizeQoderWorkDisabledHooks(settings, ownership)) changed = true;
 
   for (const event of QODERWORK_HOOK_EVENTS) {
     const desiredCommand = buildQoderWorkHookCommand(nodeBin, hookScript, event, {
@@ -254,7 +288,7 @@ function registerQoderWorkHooks(options = {}) {
       changed = true;
     }
 
-    const result = normalizeQoderWorkHookEntries(settings.hooks[event], desiredCommand);
+    const result = normalizeQoderWorkHookEntries(settings.hooks[event], desiredCommand, ownership);
     if (result.changed) changed = true;
 
     if (result.matched) {
@@ -263,7 +297,7 @@ function registerQoderWorkHooks(options = {}) {
       continue;
     }
 
-    settings.hooks[event].push(buildQoderWorkHookEntry(desiredCommand));
+    settings.hooks[event].push(buildQoderWorkHookEntry(desiredCommand, ownership.hookName));
     added++;
     changed = true;
   }
@@ -300,6 +334,7 @@ function unregisterQoderWorkHooks(options = {}) {
 
   if (!settings.hooks || typeof settings.hooks !== "object") return { removed: 0 };
 
+  const { ownsCommand } = getQoderWorkHookOwnership(options);
   let removed = 0;
   let changed = false;
 
@@ -314,7 +349,7 @@ function unregisterQoderWorkHooks(options = {}) {
         continue;
       }
       // Flat command format.
-      if (isClawdHookCommand(entry.command)) {
+      if (ownsCommand(entry.command)) {
         removed++;
         changed = true;
         continue;
@@ -322,7 +357,7 @@ function unregisterQoderWorkHooks(options = {}) {
       // Nested hooks format.
       if (Array.isArray(entry.hooks)) {
         const otherHooks = entry.hooks.filter(
-          (hook) => !(hook && typeof hook === "object" && isClawdHookCommand(hook.command))
+          (hook) => !(hook && typeof hook === "object" && ownsCommand(hook.command))
         );
         removed += entry.hooks.length - otherHooks.length;
         if (otherHooks.length !== entry.hooks.length) {

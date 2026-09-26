@@ -15,8 +15,17 @@ const {
   decodeWindowsEncodedCommand,
   removeMatchingCommandHooks,
 } = require("./json-utils");
+const {
+  STORE_HOOK_NAME,
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 
 const MARKER = "qwen-code-hook.js";
+const HOOK_NAME = "clawd";
 const DEFAULT_PARENT_DIR = path.join(os.homedir(), ".qwen");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_PARENT_DIR, "settings.json");
 
@@ -63,11 +72,29 @@ function buildQwenCodeHookCommand(nodeBin, hookScript, event, options = {}) {
   });
 }
 
-function buildQwenCodeHookEntry(command, event) {
+// Which entries this install owns. Every clawd install owns the commands that
+// mention qwen-code-hook.js; the Mac App Store build owns only its own, and
+// names them apart (see hooks/store-hook-ownership.js).
+const CLAWD_QWEN_CODE_OWNERSHIP = Object.freeze({
+  store: false,
+  hookName: HOOK_NAME,
+  ownsCommand: isClawdHookCommand,
+});
+
+function getQwenCodeHookOwnership(options = {}) {
+  if (!isStoreHookInstall(options)) return CLAWD_QWEN_CODE_OWNERSHIP;
+  return {
+    store: true,
+    hookName: STORE_HOOK_NAME,
+    ownsCommand: hookCommandOwner(options, { agentId: "qwen-code", marker: MARKER }),
+  };
+}
+
+function buildQwenCodeHookEntry(command, event, hookName = HOOK_NAME) {
   const matcher = matcherForQwenCodeEvent(event);
   const entry = {
     hooks: [{
-      name: "clawd",
+      name: hookName,
       type: "command",
       command,
       timeout: timeoutForQwenCodeEvent(event),
@@ -82,7 +109,7 @@ function replaceEntry(target, source) {
   Object.assign(target, source);
 }
 
-function isDesiredQwenCodeHookEntry(entry, desiredCommand, event) {
+function isDesiredQwenCodeHookEntry(entry, desiredCommand, event, hookName = HOOK_NAME) {
   if (!entry || typeof entry !== "object") return false;
   const matcher = matcherForQwenCodeEvent(event);
   if (matcher === null) {
@@ -94,16 +121,17 @@ function isDesiredQwenCodeHookEntry(entry, desiredCommand, event) {
     Array.isArray(entry.hooks)
     && entry.hooks.length === 1
     && entry.hooks[0]
-    && entry.hooks[0].name === "clawd"
+    && entry.hooks[0].name === hookName
     && entry.hooks[0].type === "command"
     && entry.hooks[0].command === desiredCommand
     && entry.hooks[0].timeout === timeoutForQwenCodeEvent(event)
   );
 }
 
-function normalizeQwenCodeHookEntries(entries, desiredCommand, event) {
+function normalizeQwenCodeHookEntries(entries, desiredCommand, event, ownership = CLAWD_QWEN_CODE_OWNERSHIP) {
   if (!Array.isArray(entries)) return { matched: false, changed: false };
 
+  const { hookName, ownsCommand } = ownership;
   let matched = false;
   let changed = false;
   let dedicatedIndex = -1;
@@ -112,10 +140,10 @@ function normalizeQwenCodeHookEntries(entries, desiredCommand, event) {
     const entry = entries[index];
     if (!entry || typeof entry !== "object") continue;
 
-    if (isClawdHookCommand(entry.command)) {
+    if (ownsCommand(entry.command)) {
       matched = true;
       if (dedicatedIndex === -1) {
-        replaceEntry(entry, buildQwenCodeHookEntry(desiredCommand, event));
+        replaceEntry(entry, buildQwenCodeHookEntry(desiredCommand, event, hookName));
         dedicatedIndex = index;
         changed = true;
       } else {
@@ -130,7 +158,7 @@ function normalizeQwenCodeHookEntries(entries, desiredCommand, event) {
     const otherHooks = [];
     let clawdHookCount = 0;
     for (const hook of entry.hooks) {
-      if (hook && isClawdHookCommand(hook.command)) clawdHookCount++;
+      if (hook && ownsCommand(hook.command)) clawdHookCount++;
       else otherHooks.push(hook);
     }
     if (clawdHookCount === 0) continue;
@@ -143,8 +171,8 @@ function normalizeQwenCodeHookEntries(entries, desiredCommand, event) {
     }
 
     if (dedicatedIndex === -1) {
-      if (!isDesiredQwenCodeHookEntry(entry, desiredCommand, event)) {
-        replaceEntry(entry, buildQwenCodeHookEntry(desiredCommand, event));
+      if (!isDesiredQwenCodeHookEntry(entry, desiredCommand, event, hookName)) {
+        replaceEntry(entry, buildQwenCodeHookEntry(desiredCommand, event, hookName));
         changed = true;
       }
       dedicatedIndex = index;
@@ -159,13 +187,13 @@ function normalizeQwenCodeHookEntries(entries, desiredCommand, event) {
   if (!matched) return { matched: false, changed: false };
 
   if (dedicatedIndex === -1) {
-    entries.push(buildQwenCodeHookEntry(desiredCommand, event));
+    entries.push(buildQwenCodeHookEntry(desiredCommand, event, hookName));
     return { matched: true, changed: true };
   }
 
   const dedicatedEntry = entries[dedicatedIndex];
-  if (!isDesiredQwenCodeHookEntry(dedicatedEntry, desiredCommand, event)) {
-    replaceEntry(dedicatedEntry, buildQwenCodeHookEntry(desiredCommand, event));
+  if (!isDesiredQwenCodeHookEntry(dedicatedEntry, desiredCommand, event, hookName)) {
+    replaceEntry(dedicatedEntry, buildQwenCodeHookEntry(desiredCommand, event, hookName));
     changed = true;
   }
   return { matched: true, changed };
@@ -196,8 +224,13 @@ function registerQwenCodeHooks(options = {}) {
     warnings.push("settings.json has disableAllHooks=true; Clawd Qwen hooks will not fire until that flag is removed.");
   }
 
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const ownership = getQwenCodeHookOwnership(options);
+  const hookScript = ownership.store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS["qwen-code"])
+    : asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
+  const resolved = ownership.store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
@@ -222,7 +255,7 @@ function registerQwenCodeHooks(options = {}) {
       changed = true;
     }
 
-    const result = normalizeQwenCodeHookEntries(settings.hooks[event], desiredCommand, event);
+    const result = normalizeQwenCodeHookEntries(settings.hooks[event], desiredCommand, event, ownership);
     if (result.changed) changed = true;
 
     if (result.matched) {
@@ -231,7 +264,7 @@ function registerQwenCodeHooks(options = {}) {
       continue;
     }
 
-    settings.hooks[event].push(buildQwenCodeHookEntry(desiredCommand, event));
+    settings.hooks[event].push(buildQwenCodeHookEntry(desiredCommand, event, ownership.hookName));
     added++;
     changed = true;
   }
@@ -263,12 +296,13 @@ function unregisterQwenCodeHooks(options = {}) {
     return { removed: 0, changed: false, settingsPath };
   }
 
+  const { ownsCommand } = getQwenCodeHookOwnership(options);
   let removed = 0;
   let changed = false;
   for (const event of QWEN_CODE_HOOK_EVENTS) {
     const entries = settings.hooks[event];
     if (!Array.isArray(entries)) continue;
-    const result = removeMatchingCommandHooks(entries, isClawdHookCommand);
+    const result = removeMatchingCommandHooks(entries, ownsCommand);
     if (!result.changed) continue;
     removed += result.removed;
     changed = true;

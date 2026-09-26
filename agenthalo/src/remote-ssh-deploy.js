@@ -57,6 +57,7 @@ const { quoteForPosixShellArg } = require("./remote-ssh-quote");
 const HOOK_FILES = [
   "server-config.js",
   "store-exchange.js",
+  "store-hook-ownership.js",
   "json-utils.js",
   "shared-process.js",
   "pid-cache.js",

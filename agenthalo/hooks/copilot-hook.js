@@ -615,9 +615,16 @@ function main() {
   }
 }
 
-if (require.main === module) main();
+// What `node copilot-hook.js` runs; the store build's entry script runs it too
+// (see hooks/store-hook-ownership.js).
+function runCli() {
+  main();
+}
+
+if (require.main === module) runCli();
 
 module.exports = {
+  runCli,
   buildStateBody,
   buildPermissionBody,
   capToolInput,

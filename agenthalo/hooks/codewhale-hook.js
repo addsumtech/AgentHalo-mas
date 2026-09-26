@@ -197,13 +197,18 @@ async function main() {
   await run();
 }
 
-if (require.main === module) {
+// What `node codewhale-hook.js` runs; the store build's entry script runs it too
+// (see hooks/store-hook-ownership.js).
+function runCli() {
   main().then(() => {
     process.exit(0);
   });
 }
 
+if (require.main === module) runCli();
+
 module.exports = {
+  runCli,
   __test: {
     AWAIT_EVENTS,
     EVENT_MAP,

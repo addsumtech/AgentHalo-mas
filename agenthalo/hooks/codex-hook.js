@@ -819,11 +819,16 @@ async function main() {
   if (result.stdout) process.stdout.write(`${result.stdout}\n`);
 }
 
-if (require.main === module) {
+// What `node codex-hook.js` runs; the store build's entry script runs it too
+// (see hooks/store-hook-ownership.js).
+function runCli() {
   main().then(() => process.exit(0), () => process.exit(0));
 }
 
+if (require.main === module) runCli();
+
 module.exports = {
+  runCli,
   CODEX_AUTO_START_TIMEOUT_MS,
   EVENT_TO_STATE,
   applyCodexSessionMetaFields,

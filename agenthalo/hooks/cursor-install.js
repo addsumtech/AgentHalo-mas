@@ -15,6 +15,13 @@ const {
   formatNodeHookCommand,
   removeMatchingCommandHooks,
 } = require("./json-utils");
+const {
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 const MARKER = "cursor-hook.js";
 const DEFAULT_PARENT_DIR = path.join(os.homedir(), ".cursor");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_PARENT_DIR, "hooks.json");
@@ -64,7 +71,13 @@ function registerCursorHooks(options = {}) {
       return { added: 0, skipped: 0, updated: 0 };
     }
   }
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, "cursor-hook.js").replace(/\\/g, "/"));
+  // Every clawd install owns the commands that mention cursor-hook.js; the Mac
+  // App Store build owns only its own (see hooks/store-hook-ownership.js).
+  const store = isStoreHookInstall(options);
+  const ownsCommand = hookCommandOwner(options, { agentId: "cursor-agent", marker: MARKER });
+  const hookScript = store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS["cursor-agent"])
+    : asarUnpackedPath(path.resolve(__dirname, "cursor-hook.js").replace(/\\/g, "/"));
 
   let settings = {};
   try {
@@ -76,7 +89,9 @@ function registerCursorHooks(options = {}) {
   }
 
   // Resolve node path; if detection fails, preserve existing absolute path
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const resolved = store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingNodeBin(settings, MARKER)
     || "node";
@@ -105,7 +120,7 @@ function registerCursorHooks(options = {}) {
     let stalePath = false;
     for (const entry of arr) {
       if (!entry || typeof entry !== "object" || typeof entry.command !== "string") continue;
-      if (!entry.command.includes(MARKER)) continue;
+      if (!ownsCommand(entry.command)) continue;
       found = true;
       if (entry.command !== desiredCommand) {
         entry.command = desiredCommand;
@@ -157,12 +172,15 @@ function unregisterCursorHooks(options = {}) {
     return { removed: 0, changed: false, hooksPath };
   }
 
+  const ownsCommand = isStoreHookInstall(options)
+    ? hookCommandOwner(options, { agentId: "cursor-agent", marker: MARKER })
+    : (command) => commandMatchesMarker(command, MARKER);
   let removed = 0;
   let changed = false;
   for (const event of CURSOR_HOOK_EVENTS) {
     const entries = settings.hooks[event];
     if (!Array.isArray(entries)) continue;
-    const result = removeMatchingCommandHooks(entries, (command) => commandMatchesMarker(command, MARKER));
+    const result = removeMatchingCommandHooks(entries, ownsCommand);
     if (!result.changed) continue;
     removed += result.removed;
     changed = true;

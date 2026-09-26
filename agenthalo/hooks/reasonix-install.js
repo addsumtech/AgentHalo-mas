@@ -17,6 +17,13 @@ const {
   formatNodeHookCommand,
   removeMatchingCommandHooks,
 } = require("./json-utils");
+const {
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 
 const MARKER = "reasonix-hook.js";
 const SETTINGS_DIRNAME = ".reasonix";
@@ -157,6 +164,12 @@ function isClawdHookCommand(command) {
   return commandMatchesMarker(command, MARKER);
 }
 
+// Every clawd install owns the commands that mention reasonix-hook.js; the Mac
+// App Store build owns only its own (see hooks/store-hook-ownership.js).
+function getReasonixCommandOwner(options = {}) {
+  return hookCommandOwner(options, { agentId: "reasonix", marker: MARKER, matchesMarker: isClawdHookCommand });
+}
+
 function buildReasonixHookEntry(command) {
   return { match: "*", command };
 }
@@ -188,7 +201,7 @@ function isDesiredReasonixHookEntry(entry, desiredCommand) {
   );
 }
 
-function normalizeReasonixHookEntries(entries, desiredCommand) {
+function normalizeReasonixHookEntries(entries, desiredCommand, ownsCommand = isClawdHookCommand) {
   if (!Array.isArray(entries)) return { matched: false, changed: false };
 
   let matched = false;
@@ -199,7 +212,7 @@ function normalizeReasonixHookEntries(entries, desiredCommand) {
     const entry = entries[index];
     if (!entry || typeof entry !== "object") continue;
 
-    if (isClawdHookCommand(entry.command)) {
+    if (ownsCommand(entry.command)) {
       matched = true;
       if (dedicatedIndex === -1) {
         const cmdChanged = entry.command !== desiredCommand;
@@ -258,7 +271,11 @@ function registerReasonixHooks(options = {}) {
     return { added: 0, skipped: 0, updated: 0 };
   }
 
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, "reasonix-hook.js").replace(/\\/g, "/"));
+  const store = isStoreHookInstall(options);
+  const ownsCommand = getReasonixCommandOwner(options);
+  const hookScript = store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS.reasonix)
+    : asarUnpackedPath(path.resolve(__dirname, "reasonix-hook.js").replace(/\\/g, "/"));
 
   let settings = {};
   try {
@@ -270,7 +287,9 @@ function registerReasonixHooks(options = {}) {
   }
 
   // Resolve node path; if detection fails, preserve existing absolute path
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const resolved = store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingNodeBin(settings, MARKER)
     || "node";
@@ -291,7 +310,7 @@ function registerReasonixHooks(options = {}) {
     }
 
     const arr = settings.hooks[event];
-    const result = normalizeReasonixHookEntries(arr, desiredCommand);
+    const result = normalizeReasonixHookEntries(arr, desiredCommand, ownsCommand);
     const found = result.matched;
     const entryChanged = result.changed;
     if (entryChanged) changed = true;
@@ -335,12 +354,13 @@ function unregisterReasonixHooksAtPath(settingsPath, options = {}) {
     return { removed: 0, changed: false, settingsPath };
   }
 
+  const ownsCommand = getReasonixCommandOwner(options);
   let removed = 0;
   let changed = false;
   for (const event of REASONIX_HOOK_EVENTS) {
     const entries = settings.hooks[event];
     if (!Array.isArray(entries)) continue;
-    const result = removeMatchingCommandHooks(entries, (command) => commandMatchesMarker(command, MARKER));
+    const result = removeMatchingCommandHooks(entries, ownsCommand);
     if (!result.changed) continue;
     removed += result.removed;
     changed = true;

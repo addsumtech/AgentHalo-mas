@@ -19,6 +19,8 @@ const {
   removeStableCodexHookLauncher,
   unregisterCodexCommandHooks,
 } = require("./codex-install-utils");
+const { unregisterCodexHooks } = require("./codex-install");
+const { isStoreHookInstall } = require("./store-hook-ownership");
 const { unregisterOpencodePlugin } = require("./opencode-install");
 const { unregisterMimocodePlugin } = require("./mimocode-install");
 const { unregisterPiExtension } = require("./pi-install");
@@ -327,6 +329,9 @@ function unregisterClaudeIntegration(options = {}) {
 }
 
 function unregisterCodexIntegration(options = {}) {
+  // The Mac App Store build removes only its own Codex hooks: codex-debug hooks
+  // and the stable launcher files are another install's.
+  if (isStoreHookInstall(options)) return unregisterCodexHooks(options);
   const hooks = unregisterCodexCommandHooks(options);
   const stableLauncher = removeStableCodexHookLauncher(options);
   return {

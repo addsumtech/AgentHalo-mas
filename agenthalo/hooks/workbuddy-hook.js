@@ -136,8 +136,6 @@ function finish(outLine) {
   process.exit(0);
 }
 
-safetyTimer = setTimeout(() => finish("{}"), SAFETY_TIMEOUT_MS);
-
 function run() {
   readStdinJson()
     .then((payload) => {
@@ -206,16 +204,19 @@ function run() {
     .catch(() => finish("{}"));
 }
 
-if (require.main === module) {
+// What `node workbuddy-hook.js` runs; the store build's entry script runs it too
+// (see hooks/store-hook-ownership.js). The safety timer is armed only here, so
+// importing this module (unit tests, the entry script) leaves no stray timer
+// or stdout write behind.
+function runCli() {
+  safetyTimer = setTimeout(() => finish("{}"), SAFETY_TIMEOUT_MS);
   run();
-} else {
-  // Imported for unit testing (deriveSessionTitle). The safety timer above must
-  // not keep the test runner alive or fire a stray stdout write.
-  if (safetyTimer) clearTimeout(safetyTimer);
-  _exited = true;
 }
 
+if (require.main === module) runCli();
+
 module.exports = {
+  runCli,
   HOOK_MAP,
   stdoutForEvent,
   deriveSessionTitle,

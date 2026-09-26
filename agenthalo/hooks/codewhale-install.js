@@ -27,9 +27,21 @@ const {
   formatNodeHookCommand,
 } = require("./json-utils");
 const { resolveNodeBin } = require("./server-config");
+const {
+  STORE_HOOK_NAME,
+  STORE_HOOK_SCRIPTS,
+  isStoreHookInstall,
+  isStoreOwnedCommand,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 
 const CODEWHALE_CONFIG_PATH = path.join(os.homedir(), ".codewhale", "config.toml");
 const MANAGED_MARKER = "managed by clawd-on-desk";
+// Mac App Store build: the comment on its own entries. Another AgentHalo
+// install owns every entry carrying MANAGED_MARKER or a command that mentions
+// codewhale-hook.js (see hooks/store-hook-ownership.js).
+const STORE_MANAGED_MARKER = `managed by ${STORE_HOOK_NAME}`;
 const HOOK_SCRIPT_MARKER = "codewhale-hook.js";
 const TOML_HEADER_RE = /^\s*\[[^\]]+\]/;
 
@@ -92,7 +104,7 @@ function extractExistingCodewhaleNodeBin(sections) {
   return extractExistingNodeBinFromCommands(commands, HOOK_SCRIPT_MARKER);
 }
 
-function buildHookEntry(event, background, hookScriptPath, options = {}) {
+function buildHookEntry(event, background, hookScriptPath, options = {}, managedMarker = MANAGED_MARKER) {
   const nodeBin = options.nodeBin !== undefined
     ? options.nodeBin
     : (resolveNodeBin(options) || options.existingNodeBin || "node");
@@ -111,7 +123,7 @@ function buildHookEntry(event, background, hookScriptPath, options = {}) {
   const lines = [];
   lines.push("");
   lines.push("[[hooks.hooks]]");
-  lines.push(`# ${MANAGED_MARKER}`);
+  lines.push(`# ${managedMarker}`);
   lines.push(`event = "${event}"`);
   lines.push(`command = '''${command}'''`);
   if (background) {
@@ -127,9 +139,12 @@ function buildHookEntry(event, background, hookScriptPath, options = {}) {
   return lines.join("\n");
 }
 
-function parseTomlSections(content) {
+// managedMarkers: the "managed by" comments that belong to the entry below
+// them when a hand edit moved one above its [[hooks.hooks]] header.
+function parseTomlSections(content, managedMarkers = [MANAGED_MARKER]) {
   // Minimal TOML parser: split into sections, preserving raw text.
   // We only need to find/replace [[hooks.hooks]] entries with the managed marker.
+  const markers = Array.isArray(managedMarkers) ? managedMarkers : [MANAGED_MARKER];
   const sections = [];
   const lines = content.split("\n");
   let current = { header: null, startLine: 0, lines: [] };
@@ -138,7 +153,7 @@ function parseTomlSections(content) {
   function takeTrailingManagedMarker(lines) {
     let markerIndex = lines.length - 1;
     while (markerIndex >= 0 && !String(lines[markerIndex] || "").trim()) markerIndex--;
-    if (markerIndex < 0 || !String(lines[markerIndex]).includes(MANAGED_MARKER)) return [];
+    if (markerIndex < 0 || !markers.some((marker) => String(lines[markerIndex]).includes(marker))) return [];
     return lines.splice(markerIndex);
   }
 
@@ -214,16 +229,84 @@ function ensureHooksEnabled(section) {
   return true;
 }
 
-function buildClawdHookSections(hookScriptPath, options = {}) {
+function buildClawdHookSections(hookScriptPath, options = {}, managedMarker = MANAGED_MARKER) {
   const sections = [];
   for (const [event, background] of HOOK_ENTRIES) {
-    sections.push(buildHookEntry(event, background, hookScriptPath, options));
+    sections.push(buildHookEntry(event, background, hookScriptPath, options, managedMarker));
   }
   return sections;
 }
 
+// Store build: its own entries are the ones with its marker comment or its
+// entry script, plus those an earlier store build wrote (this bundle's launcher
+// running this bundle's codewhale-hook.js, under MANAGED_MARKER).
+function sectionIsStoreManagedHook(section) {
+  if (!section || section.header !== "hooks.hooks") return false;
+  if (section.lines.some((line) => String(line || "").includes(STORE_MANAGED_MARKER))) return true;
+  return section.lines.some((line) => (
+    /^\s*command\s*=/.test(String(line || ""))
+    && isStoreOwnedCommand(String(line), STORE_HOOK_SCRIPTS.codewhale, HOOK_SCRIPT_MARKER)
+  ));
+}
+
+function sectionText(lines) {
+  return lines.map((line) => String(line || "").trimEnd()).filter((line) => line.trim()).join("\n");
+}
+
+function hooksSectionEnabled(section) {
+  return !!section && section.lines.some((line) => /^\s*enabled\s*=\s*true(?:\s*(?:#.*)?)?$/.test(String(line || "")));
+}
+
+// Store build: another install puts its entries back just below [hooks] on
+// every sync, so the store build never inserts above them (that install would
+// then rewrite the file each time). New entries go after the existing
+// [[hooks.hooks]] entries, changed ones stay where they were, and current ones
+// are left untouched.
+function placeStoreHookSections(sections, newEntries) {
+  const managed = [];
+  for (let i = 0; i < sections.length; i++) {
+    if (sectionIsStoreManagedHook(sections[i])) managed.push(i);
+  }
+  let hooksIdx = sections.findIndex((section) => section.header === "hooks");
+  const current = managed.map((i) => sectionText(sections[i].lines));
+  const desired = newEntries.map((entry) => sectionText(entry.split("\n")));
+  if (
+    hooksIdx >= 0
+    && hooksSectionEnabled(sections[hooksIdx])
+    && current.length === desired.length
+    && current.every((text, i) => text === desired[i])
+  ) {
+    return { changed: false, removed: 0 };
+  }
+
+  let insertIdx = managed.length ? managed[0] : -1;
+  for (const idx of [...managed].reverse()) sections.splice(idx, 1);
+  hooksIdx = sections.findIndex((section) => section.header === "hooks");
+  if (hooksIdx < 0) {
+    sections.push({ header: "hooks", startLine: -1, lines: ["[hooks]", "enabled = true"] });
+    hooksIdx = sections.length - 1;
+    insertIdx = hooksIdx + 1;
+  } else {
+    ensureHooksEnabled(sections[hooksIdx]);
+    if (insertIdx < 0) {
+      // After [hooks] and the entries that follow it.
+      insertIdx = hooksIdx + 1;
+      while (insertIdx < sections.length && sections[insertIdx].header === "hooks.hooks") insertIdx++;
+    }
+  }
+  for (const entry of newEntries) {
+    sections.splice(insertIdx, 0, { header: "hooks.hooks", startLine: -1, lines: entry.split("\n") });
+    insertIdx++;
+  }
+  return { changed: true, removed: managed.length };
+}
+
 function registerCodewhaleHooks(options = {}) {
-  const hookScriptPath = options.hookScriptPath || resolveHookScriptPath();
+  const store = isStoreHookInstall(options);
+  const managedMarker = store ? STORE_MANAGED_MARKER : MANAGED_MARKER;
+  const hookScriptPath = options.hookScriptPath
+    || (store ? storeHookScriptPath(STORE_HOOK_SCRIPTS.codewhale) : resolveHookScriptPath());
+  const storeEntryOptions = store ? { ...options, nodeBin: storeNodeBin(options) } : null;
   const configPath = resolveCodewhaleConfigPath(options);
   const explicitConfigPath = hasExplicitConfigPath(options);
 
@@ -253,7 +336,9 @@ function registerCodewhaleHooks(options = {}) {
 
   // If config doesn't exist or is empty → bootstrap with [hooks] + entries
   if (!content.trim()) {
-    const hookSections = buildClawdHookSections(hookScriptPath, options);
+    const hookSections = store
+      ? buildClawdHookSections(hookScriptPath, storeEntryOptions, managedMarker)
+      : buildClawdHookSections(hookScriptPath, options);
     const newContent = [
       "# codewhale Configuration",
       "",
@@ -272,6 +357,16 @@ function registerCodewhaleHooks(options = {}) {
       console.log(`  Created config with ${HOOK_ENTRIES.length} hooks`);
     }
     return { added: HOOK_ENTRIES.length, removed: 0, updated: 0, skipped: false };
+  }
+
+  if (store) {
+    const sections = parseTomlSections(content, [MANAGED_MARKER, STORE_MANAGED_MARKER]);
+    const placed = placeStoreHookSections(
+      sections,
+      buildClawdHookSections(hookScriptPath, storeEntryOptions, managedMarker)
+    );
+    const newContent = placed.changed ? reconstructToml(sections) : content;
+    return writeRegisteredCodewhaleHooks(configPath, content, newContent, placed.removed, options);
   }
 
   // Parse existing config
@@ -322,6 +417,11 @@ function registerCodewhaleHooks(options = {}) {
   }
 
   // Reconstruct TOML
+  const newContent = reconstructToml(sections);
+  return writeRegisteredCodewhaleHooks(configPath, content, newContent, matchedManagedHooks, options);
+}
+
+function reconstructToml(sections) {
   const newLines = [];
   for (const section of sections) {
     for (const line of section.lines) {
@@ -330,8 +430,11 @@ function registerCodewhaleHooks(options = {}) {
       }
     }
   }
+  return newLines.join("\n").trim() + "\n";
+}
 
-  const newContent = newLines.join("\n").trim() + "\n";
+function writeRegisteredCodewhaleHooks(configPath, content, newContent, matchedManagedHooks, options = {}) {
+  const configDir = path.dirname(configPath);
   const updated = newContent !== content;
   const removed = updated ? matchedManagedHooks : 0;
 
@@ -369,11 +472,15 @@ function unregisterCodewhaleHooks(options = {}) {
     throw err;
   }
 
-  const sections = parseTomlSections(content);
+  const store = isStoreHookInstall(options);
+  const sections = store
+    ? parseTomlSections(content, [MANAGED_MARKER, STORE_MANAGED_MARKER])
+    : parseTomlSections(content);
+  const isManaged = store ? sectionIsStoreManagedHook : sectionIsManagedHook;
   let removed = 0;
 
   for (let i = sections.length - 1; i >= 0; i--) {
-    if (sectionIsManagedHook(sections[i])) {
+    if (isManaged(sections[i])) {
       sections.splice(i, 1);
       removed++;
     }
@@ -409,6 +516,8 @@ function unregisterCodewhaleHooks(options = {}) {
 module.exports = {
   CODEWHALE_CONFIG_PATH,
   HOOK_ENTRIES,
+  MANAGED_MARKER,
+  STORE_MANAGED_MARKER,
   parseTomlSections,
   registerCodewhaleHooks,
   resolveCodewhaleConfigPath,

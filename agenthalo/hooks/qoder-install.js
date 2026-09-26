@@ -16,8 +16,17 @@ const {
   formatNodeHookCommand,
   decodeWindowsEncodedCommand,
 } = require("./json-utils");
+const {
+  STORE_HOOK_NAME,
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 
 const MARKER = "qoder-hook.js";
+const HOOK_NAME = "clawd";
 const DEFAULT_PARENT_DIR = path.join(os.homedir(), ".qoder");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_PARENT_DIR, "settings.json");
 
@@ -45,10 +54,28 @@ function isClawdHookCommand(command) {
   return !!(decoded && decoded.includes(MARKER));
 }
 
-function buildQoderHookEntry(command) {
+// Which entries this install owns. Every clawd install owns the commands that
+// mention qoder-hook.js and the hook name "clawd"; the Mac App Store build
+// owns only its own (see hooks/store-hook-ownership.js).
+const CLAWD_QODER_OWNERSHIP = Object.freeze({
+  store: false,
+  hookName: HOOK_NAME,
+  ownsCommand: isClawdHookCommand,
+});
+
+function getQoderHookOwnership(options = {}) {
+  if (!isStoreHookInstall(options)) return CLAWD_QODER_OWNERSHIP;
+  return {
+    store: true,
+    hookName: STORE_HOOK_NAME,
+    ownsCommand: hookCommandOwner(options, { agentId: "qoder", marker: MARKER }),
+  };
+}
+
+function buildQoderHookEntry(command, hookName = HOOK_NAME) {
   return {
     matcher: "*",
-    hooks: [{ name: "clawd", type: "command", command }],
+    hooks: [{ name: hookName, type: "command", command }],
   };
 }
 
@@ -72,7 +99,7 @@ function replaceEntry(target, source) {
   Object.assign(target, source);
 }
 
-function isDesiredQoderHookEntry(entry, desiredCommand) {
+function isDesiredQoderHookEntry(entry, desiredCommand, hookName = HOOK_NAME) {
   return !!(
     entry
     && typeof entry === "object"
@@ -80,15 +107,16 @@ function isDesiredQoderHookEntry(entry, desiredCommand) {
     && Array.isArray(entry.hooks)
     && entry.hooks.length === 1
     && entry.hooks[0]
-    && entry.hooks[0].name === "clawd"
+    && entry.hooks[0].name === hookName
     && entry.hooks[0].type === "command"
     && entry.hooks[0].command === desiredCommand
   );
 }
 
-function normalizeQoderHookEntries(entries, desiredCommand) {
+function normalizeQoderHookEntries(entries, desiredCommand, ownership = CLAWD_QODER_OWNERSHIP) {
   if (!Array.isArray(entries)) return { matched: false, changed: false };
 
+  const { hookName, ownsCommand } = ownership;
   let matched = false;
   let changed = false;
   let dedicatedIndex = -1;
@@ -98,10 +126,10 @@ function normalizeQoderHookEntries(entries, desiredCommand) {
     if (!entry || typeof entry !== "object") continue;
 
     // Legacy flat Clawd entry ({ command }) — normalize into the nested shape.
-    if (isClawdHookCommand(entry.command)) {
+    if (ownsCommand(entry.command)) {
       matched = true;
       if (dedicatedIndex === -1) {
-        replaceEntry(entry, buildQoderHookEntry(desiredCommand));
+        replaceEntry(entry, buildQoderHookEntry(desiredCommand, hookName));
         dedicatedIndex = index;
         changed = true;
       } else {
@@ -116,7 +144,7 @@ function normalizeQoderHookEntries(entries, desiredCommand) {
     const otherHooks = [];
     let clawdHookCount = 0;
     for (const hook of entry.hooks) {
-      if (hook && isClawdHookCommand(hook.command)) {
+      if (hook && ownsCommand(hook.command)) {
         clawdHookCount++;
       } else {
         otherHooks.push(hook);
@@ -133,8 +161,8 @@ function normalizeQoderHookEntries(entries, desiredCommand) {
     }
 
     if (dedicatedIndex === -1) {
-      if (!isDesiredQoderHookEntry(entry, desiredCommand)) {
-        replaceEntry(entry, buildQoderHookEntry(desiredCommand));
+      if (!isDesiredQoderHookEntry(entry, desiredCommand, hookName)) {
+        replaceEntry(entry, buildQoderHookEntry(desiredCommand, hookName));
         changed = true;
       }
       dedicatedIndex = index;
@@ -149,13 +177,13 @@ function normalizeQoderHookEntries(entries, desiredCommand) {
   if (!matched) return { matched: false, changed: false };
 
   if (dedicatedIndex === -1) {
-    entries.push(buildQoderHookEntry(desiredCommand));
+    entries.push(buildQoderHookEntry(desiredCommand, hookName));
     return { matched: true, changed: true };
   }
 
   const dedicatedEntry = entries[dedicatedIndex];
-  if (!isDesiredQoderHookEntry(dedicatedEntry, desiredCommand)) {
-    replaceEntry(dedicatedEntry, buildQoderHookEntry(desiredCommand));
+  if (!isDesiredQoderHookEntry(dedicatedEntry, desiredCommand, hookName)) {
+    replaceEntry(dedicatedEntry, buildQoderHookEntry(desiredCommand, hookName));
     changed = true;
   }
   return { matched: true, changed };
@@ -164,16 +192,17 @@ function normalizeQoderHookEntries(entries, desiredCommand) {
 // Qoder's `hooksConfig.disabled` list can name a hook group by id ("clawd") or
 // by raw command. Collapse Clawd command references into the "clawd" id and
 // de-duplicate so Doctor can reliably see whether our group is disabled.
-function normalizeQoderDisabledHooks(settings) {
+function normalizeQoderDisabledHooks(settings, ownership = CLAWD_QODER_OWNERSHIP) {
   const hooksConfig = settings && typeof settings === "object" ? settings.hooksConfig : null;
   if (!hooksConfig || typeof hooksConfig !== "object" || !Array.isArray(hooksConfig.disabled)) return false;
 
+  const { hookName, ownsCommand } = ownership;
   let changed = false;
   let sawClawd = false;
   const nextDisabled = [];
 
   for (const entry of hooksConfig.disabled) {
-    if (entry === "clawd") {
+    if (entry === hookName) {
       if (sawClawd) {
         changed = true;
         continue;
@@ -183,9 +212,9 @@ function normalizeQoderDisabledHooks(settings) {
       continue;
     }
 
-    if (isClawdHookCommand(entry)) {
+    if (ownsCommand(entry)) {
       if (!sawClawd) {
-        nextDisabled.push("clawd");
+        nextDisabled.push(hookName);
         sawClawd = true;
       }
       changed = true;
@@ -230,10 +259,15 @@ function registerQoderHooks(options = {}) {
   }
 
   const settings = readSettings(settingsPath);
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
+  const ownership = getQoderHookOwnership(options);
+  const hookScript = ownership.store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS.qoder)
+    : asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
 
   // Resolve node path; if detection fails, preserve any existing absolute path.
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const resolved = ownership.store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
@@ -244,7 +278,7 @@ function registerQoderHooks(options = {}) {
   let changed = false;
 
   if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
-  if (normalizeQoderDisabledHooks(settings)) changed = true;
+  if (normalizeQoderDisabledHooks(settings, ownership)) changed = true;
 
   for (const event of QODER_HOOK_EVENTS) {
     const desiredCommand = buildQoderHookCommand(nodeBin, hookScript, event, {
@@ -255,7 +289,7 @@ function registerQoderHooks(options = {}) {
       changed = true;
     }
 
-    const result = normalizeQoderHookEntries(settings.hooks[event], desiredCommand);
+    const result = normalizeQoderHookEntries(settings.hooks[event], desiredCommand, ownership);
     if (result.changed) changed = true;
 
     if (result.matched) {
@@ -264,7 +298,7 @@ function registerQoderHooks(options = {}) {
       continue;
     }
 
-    settings.hooks[event].push(buildQoderHookEntry(desiredCommand));
+    settings.hooks[event].push(buildQoderHookEntry(desiredCommand, ownership.hookName));
     added++;
     changed = true;
   }
@@ -301,6 +335,7 @@ function unregisterQoderHooks(options = {}) {
 
   if (!settings.hooks || typeof settings.hooks !== "object") return { removed: 0 };
 
+  const { ownsCommand } = getQoderHookOwnership(options);
   let removed = 0;
   let changed = false;
 
@@ -315,7 +350,7 @@ function unregisterQoderHooks(options = {}) {
         continue;
       }
       // Flat command format.
-      if (isClawdHookCommand(entry.command)) {
+      if (ownsCommand(entry.command)) {
         removed++;
         changed = true;
         continue;
@@ -323,7 +358,7 @@ function unregisterQoderHooks(options = {}) {
       // Nested hooks format.
       if (Array.isArray(entry.hooks)) {
         const otherHooks = entry.hooks.filter(
-          (hook) => !(hook && typeof hook === "object" && isClawdHookCommand(hook.command))
+          (hook) => !(hook && typeof hook === "object" && ownsCommand(hook.command))
         );
         removed += entry.hooks.length - otherHooks.length;
         if (otherHooks.length !== entry.hooks.length) {

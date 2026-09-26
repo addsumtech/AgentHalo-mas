@@ -17,8 +17,17 @@ const {
   formatNodeHookCommand,
   decodeWindowsEncodedCommand,
 } = require("./json-utils");
+const {
+  STORE_HOOK_NAME,
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 
 const MARKER = "qwenwork-hook.js";
+const HOOK_NAME = "clawd";
 // QwenWork stores its user data home at ~/.QwenWorkCN (macOS; case-insensitive
 // "~/.qwenworkcn"), NOT the ~/.qwenwork path its hooks docs mention. The app
 // created ~/.QwenWorkCN with the same layout as QoderWork's ~/.qoderwork.
@@ -49,10 +58,28 @@ function isClawdHookCommand(command) {
   return !!(decoded && decoded.includes(MARKER));
 }
 
-function buildQwenWorkHookEntry(command) {
+// Which entries this install owns. Every clawd install owns the commands that
+// mention qwenwork-hook.js and the hook name "clawd"; the Mac App Store build
+// owns only its own (see hooks/store-hook-ownership.js).
+const CLAWD_QWENWORK_OWNERSHIP = Object.freeze({
+  store: false,
+  hookName: HOOK_NAME,
+  ownsCommand: isClawdHookCommand,
+});
+
+function getQwenWorkHookOwnership(options = {}) {
+  if (!isStoreHookInstall(options)) return CLAWD_QWENWORK_OWNERSHIP;
+  return {
+    store: true,
+    hookName: STORE_HOOK_NAME,
+    ownsCommand: hookCommandOwner(options, { agentId: "qwenwork", marker: MARKER }),
+  };
+}
+
+function buildQwenWorkHookEntry(command, hookName = HOOK_NAME) {
   return {
     matcher: "*",
-    hooks: [{ name: "clawd", type: "command", command }],
+    hooks: [{ name: hookName, type: "command", command }],
   };
 }
 
@@ -73,7 +100,7 @@ function replaceEntry(target, source) {
   Object.assign(target, source);
 }
 
-function isDesiredQwenWorkHookEntry(entry, desiredCommand) {
+function isDesiredQwenWorkHookEntry(entry, desiredCommand, hookName = HOOK_NAME) {
   return !!(
     entry
     && typeof entry === "object"
@@ -81,15 +108,16 @@ function isDesiredQwenWorkHookEntry(entry, desiredCommand) {
     && Array.isArray(entry.hooks)
     && entry.hooks.length === 1
     && entry.hooks[0]
-    && entry.hooks[0].name === "clawd"
+    && entry.hooks[0].name === hookName
     && entry.hooks[0].type === "command"
     && entry.hooks[0].command === desiredCommand
   );
 }
 
-function normalizeQwenWorkHookEntries(entries, desiredCommand) {
+function normalizeQwenWorkHookEntries(entries, desiredCommand, ownership = CLAWD_QWENWORK_OWNERSHIP) {
   if (!Array.isArray(entries)) return { matched: false, changed: false };
 
+  const { hookName, ownsCommand } = ownership;
   let matched = false;
   let changed = false;
   let dedicatedIndex = -1;
@@ -99,10 +127,10 @@ function normalizeQwenWorkHookEntries(entries, desiredCommand) {
     if (!entry || typeof entry !== "object") continue;
 
     // Legacy flat Clawd entry ({ command }) — normalize into the nested shape.
-    if (isClawdHookCommand(entry.command)) {
+    if (ownsCommand(entry.command)) {
       matched = true;
       if (dedicatedIndex === -1) {
-        replaceEntry(entry, buildQwenWorkHookEntry(desiredCommand));
+        replaceEntry(entry, buildQwenWorkHookEntry(desiredCommand, hookName));
         dedicatedIndex = index;
         changed = true;
       } else {
@@ -117,7 +145,7 @@ function normalizeQwenWorkHookEntries(entries, desiredCommand) {
     const otherHooks = [];
     let clawdHookCount = 0;
     for (const hook of entry.hooks) {
-      if (hook && isClawdHookCommand(hook.command)) {
+      if (hook && ownsCommand(hook.command)) {
         clawdHookCount++;
       } else {
         otherHooks.push(hook);
@@ -134,8 +162,8 @@ function normalizeQwenWorkHookEntries(entries, desiredCommand) {
     }
 
     if (dedicatedIndex === -1) {
-      if (!isDesiredQwenWorkHookEntry(entry, desiredCommand)) {
-        replaceEntry(entry, buildQwenWorkHookEntry(desiredCommand));
+      if (!isDesiredQwenWorkHookEntry(entry, desiredCommand, hookName)) {
+        replaceEntry(entry, buildQwenWorkHookEntry(desiredCommand, hookName));
         changed = true;
       }
       dedicatedIndex = index;
@@ -150,13 +178,13 @@ function normalizeQwenWorkHookEntries(entries, desiredCommand) {
   if (!matched) return { matched: false, changed: false };
 
   if (dedicatedIndex === -1) {
-    entries.push(buildQwenWorkHookEntry(desiredCommand));
+    entries.push(buildQwenWorkHookEntry(desiredCommand, hookName));
     return { matched: true, changed: true };
   }
 
   const dedicatedEntry = entries[dedicatedIndex];
-  if (!isDesiredQwenWorkHookEntry(dedicatedEntry, desiredCommand)) {
-    replaceEntry(dedicatedEntry, buildQwenWorkHookEntry(desiredCommand));
+  if (!isDesiredQwenWorkHookEntry(dedicatedEntry, desiredCommand, hookName)) {
+    replaceEntry(dedicatedEntry, buildQwenWorkHookEntry(desiredCommand, hookName));
     changed = true;
   }
   return { matched: true, changed };
@@ -165,16 +193,17 @@ function normalizeQwenWorkHookEntries(entries, desiredCommand) {
 // QwenWork's `hooksConfig.disabled` list can name a hook group by id ("clawd")
 // or by raw command. Collapse Clawd command references into the "clawd" id and
 // de-duplicate so Doctor can reliably see whether our group is disabled.
-function normalizeQwenWorkDisabledHooks(settings) {
+function normalizeQwenWorkDisabledHooks(settings, ownership = CLAWD_QWENWORK_OWNERSHIP) {
   const hooksConfig = settings && typeof settings === "object" ? settings.hooksConfig : null;
   if (!hooksConfig || typeof hooksConfig !== "object" || !Array.isArray(hooksConfig.disabled)) return false;
 
+  const { hookName, ownsCommand } = ownership;
   let changed = false;
   let sawClawd = false;
   const nextDisabled = [];
 
   for (const entry of hooksConfig.disabled) {
-    if (entry === "clawd") {
+    if (entry === hookName) {
       if (sawClawd) {
         changed = true;
         continue;
@@ -184,9 +213,9 @@ function normalizeQwenWorkDisabledHooks(settings) {
       continue;
     }
 
-    if (isClawdHookCommand(entry)) {
+    if (ownsCommand(entry)) {
       if (!sawClawd) {
-        nextDisabled.push("clawd");
+        nextDisabled.push(hookName);
         sawClawd = true;
       }
       changed = true;
@@ -234,10 +263,15 @@ function registerQwenWorkHooks(options = {}) {
   if (typeof settings !== "object" || settings === null || Array.isArray(settings)) {
     throw new Error("Invalid QwenWork settings.json: top level must be an object");
   }
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
+  const ownership = getQwenWorkHookOwnership(options);
+  const hookScript = ownership.store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS.qwenwork)
+    : asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
 
   // Resolve node path; if detection fails, preserve any existing absolute path.
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const resolved = ownership.store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
@@ -252,7 +286,7 @@ function registerQwenWorkHooks(options = {}) {
   } else if (typeof settings.hooks !== "object" || Array.isArray(settings.hooks)) {
     throw new Error("Invalid QwenWork settings.json: hooks must be an object keyed by event name");
   }
-  if (normalizeQwenWorkDisabledHooks(settings)) changed = true;
+  if (normalizeQwenWorkDisabledHooks(settings, ownership)) changed = true;
 
   for (const event of QWENWORK_HOOK_EVENTS) {
     const desiredCommand = buildQwenWorkHookCommand(nodeBin, hookScript, event, {
@@ -263,7 +297,7 @@ function registerQwenWorkHooks(options = {}) {
       changed = true;
     }
 
-    const result = normalizeQwenWorkHookEntries(settings.hooks[event], desiredCommand);
+    const result = normalizeQwenWorkHookEntries(settings.hooks[event], desiredCommand, ownership);
     if (result.changed) changed = true;
 
     if (result.matched) {
@@ -272,7 +306,7 @@ function registerQwenWorkHooks(options = {}) {
       continue;
     }
 
-    settings.hooks[event].push(buildQwenWorkHookEntry(desiredCommand));
+    settings.hooks[event].push(buildQwenWorkHookEntry(desiredCommand, ownership.hookName));
     added++;
     changed = true;
   }
@@ -317,6 +351,7 @@ function unregisterQwenWorkHooks(options = {}) {
     return result;
   }
 
+  const { ownsCommand } = getQwenWorkHookOwnership(options);
   let removed = 0;
   let changed = false;
 
@@ -331,7 +366,7 @@ function unregisterQwenWorkHooks(options = {}) {
         continue;
       }
       // Flat command format.
-      if (isClawdHookCommand(entry.command)) {
+      if (ownsCommand(entry.command)) {
         removed++;
         changed = true;
         continue;
@@ -339,7 +374,7 @@ function unregisterQwenWorkHooks(options = {}) {
       // Nested hooks format.
       if (Array.isArray(entry.hooks)) {
         const otherHooks = entry.hooks.filter(
-          (hook) => !(hook && typeof hook === "object" && isClawdHookCommand(hook.command))
+          (hook) => !(hook && typeof hook === "object" && ownsCommand(hook.command))
         );
         removed += entry.hooks.length - otherHooks.length;
         if (otherHooks.length !== entry.hooks.length) {

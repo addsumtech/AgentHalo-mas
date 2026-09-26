@@ -1109,12 +1109,16 @@ function ensureCodexHooksFeature(configPath, options = {}) {
 // commandWindows — that command could be a third-party hook. Uninstall, by
 // contrast, always matches both fields: removal must be complete on every
 // platform.
+//
+// `marker` is a substring, or a predicate over the command (the Mac App Store
+// build's ownership rules, see hooks/store-hook-ownership.js).
 function hookMatchesCodexMarker(hook, marker, includeWindowsVariant) {
+  const matches = typeof marker === "function" ? marker : (command) => commandMatchesMarker(command, marker);
   return (
-    (typeof hook.command === "string" && commandMatchesMarker(hook.command, marker)) ||
+    (typeof hook.command === "string" && matches(hook.command)) ||
     (includeWindowsVariant === true
       && typeof hook.commandWindows === "string"
-      && commandMatchesMarker(hook.commandWindows, marker))
+      && matches(hook.commandWindows))
   );
 }
 
@@ -1223,6 +1227,10 @@ function registerCodexCommandHooks(options = {}) {
   const scriptName = options.scriptName || marker;
   const events = Array.isArray(options.events) ? options.events : CODEX_HOOK_EVENTS;
   if (!marker || !scriptName) throw new Error("registerCodexCommandHooks requires marker and scriptName");
+  // options.ownsCommand narrows which commands are this install's (the Mac App
+  // Store build's own entries); otherwise every command mentioning marker is.
+  const owner = typeof options.ownsCommand === "function" ? options.ownsCommand : marker;
+  const ownsCommand = typeof owner === "function" ? owner : (command) => commandMatchesMarker(command, marker);
 
   const { codexDir, hooksPath, configPath } = getCodexPaths(options);
   if (!options.hooksPath && !options.codexDir && !fs.existsSync(codexDir)) {
@@ -1369,7 +1377,7 @@ function registerCodexCommandHooks(options = {}) {
     const desiredTimeout = timeoutForCodexEvent(event);
 
     for (const entry of arr) {
-      const hook = findCodexCommandHook(entry, marker, { includeWindowsVariant: isWindowsHost });
+      const hook = findCodexCommandHook(entry, owner, { includeWindowsVariant: isWindowsHost });
       if (!hook) continue;
       found = true;
       if (hook.type !== "command") {
@@ -1385,7 +1393,7 @@ function registerCodexCommandHooks(options = {}) {
       const commandHandEdited = isWindowsHost
         && typeof hook.command === "string"
         && hook.command !== ""
-        && !commandMatchesMarker(hook.command, marker);
+        && !ownsCommand(hook.command);
       if (!commandHandEdited && hook.command !== desiredCommand) {
         hook.command = desiredCommand;
         stale = true;
@@ -1464,9 +1472,11 @@ function unregisterCodexCommandHooks(options = {}) {
   for (const event of events) {
     const arr = settings.hooks[event];
     if (!Array.isArray(arr)) continue;
-    const result = removeCodexCommandHooks(arr, (command) =>
-      markers.some((marker) => commandMatchesMarker(command, marker))
-    );
+    // options.ownsCommand narrows removal to this install's own commands (the
+    // Mac App Store build's, see hooks/store-hook-ownership.js).
+    const result = removeCodexCommandHooks(arr, typeof options.ownsCommand === "function"
+      ? options.ownsCommand
+      : (command) => markers.some((marker) => commandMatchesMarker(command, marker)));
     if (result.changed) {
       removed += result.removed;
       if (result.entries.length > 0) settings.hooks[event] = result.entries;

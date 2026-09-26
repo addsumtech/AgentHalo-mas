@@ -27,6 +27,13 @@ const {
   formatNodeHookCommand,
   decodeWindowsEncodedCommand,
 } = require("./json-utils");
+const {
+  STORE_HOOK_SCRIPTS,
+  isStoreHookInstall,
+  isStoreOwnedCommand,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 
 // ZCode config-file hooks nest under hooks.events.<Event> (unlike Claude /
 // Qwen settings.json hooks which sit directly under hooks.<Event>), so the
@@ -188,6 +195,39 @@ function isClawdClaudeHook(hook) {
   );
 }
 
+// A hook's command and arguments as one string, for the store ownership test.
+function zcodeHookCommandLine(hook) {
+  if (!hook || typeof hook !== "object") return null;
+  const parts = [hook.command, ...(Array.isArray(hook.args) ? hook.args : [])]
+    .filter((part) => typeof part === "string");
+  return parts.length ? parts.join(" ") : null;
+}
+
+function isStoreOwnedZcodeHook(hook, storeScript, legacyScript) {
+  const commandLine = zcodeHookCommandLine(hook);
+  return !!commandLine && isStoreOwnedCommand(commandLine, storeScript, legacyScript);
+}
+
+// Which hooks this install owns. Every clawd install owns the hooks that
+// mention zcode-hook.js, and strips imported ones that mention clawd-hook.js;
+// the Mac App Store build owns only its own and strips only its own imported
+// Claude hooks (see hooks/store-hook-ownership.js).
+const CLAWD_ZCODE_OWNERSHIP = Object.freeze({
+  store: false,
+  ownsHook: isClawdZcodeHook,
+  isImportedClaudeHook: isClawdClaudeHook,
+});
+
+const STORE_ZCODE_OWNERSHIP = Object.freeze({
+  store: true,
+  ownsHook: (hook) => isStoreOwnedZcodeHook(hook, STORE_HOOK_SCRIPTS.zcode, MARKER),
+  isImportedClaudeHook: (hook) => isStoreOwnedZcodeHook(hook, STORE_HOOK_SCRIPTS["claude-code"], CLAUDE_MARKER),
+});
+
+function getZcodeHookOwnership(options = {}) {
+  return isStoreHookInstall(options) ? STORE_ZCODE_OWNERSHIP : CLAWD_ZCODE_OWNERSHIP;
+}
+
 // Strip Clawd's Claude hook entries (clawd-hook.js) migrated into the zcode
 // config's hooks.events.* by a ZCode Claude-config import. This is a pure
 // subtraction: clawd-hook.js uses an un-prefixed session_id + agent_id
@@ -197,7 +237,8 @@ function isClawdClaudeHook(hook) {
 // Returns { changed, removed } — removed counts stripped Clawd Claude commands
 // (used only for reporting; it is NOT mixed into the register() added/updated
 // counters, which track the zcode hooks specifically).
-function stripMigratedClaudeHooks(events) {
+function stripMigratedClaudeHooks(events, ownership = CLAWD_ZCODE_OWNERSHIP) {
+  const isImportedClaudeHook = ownership.isImportedClaudeHook;
   let changed = false;
   let removed = 0;
   if (!events || typeof events !== "object") return { changed, removed };
@@ -208,7 +249,7 @@ function stripMigratedClaudeHooks(events) {
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
       if (!entry || typeof entry !== "object") continue;
-      if (isClawdClaudeHook(entry)) {
+      if (isImportedClaudeHook(entry)) {
         entries.splice(i, 1);
         i--;
         removed++;
@@ -218,7 +259,7 @@ function stripMigratedClaudeHooks(events) {
       if (Array.isArray(entry.hooks)) {
         const before = entry.hooks.length;
         entry.hooks = entry.hooks.filter((h) => {
-          if (isClawdClaudeHook(h)) {
+          if (isImportedClaudeHook(h)) {
             removed++;
             changed = true;
             return false;
@@ -323,7 +364,7 @@ function isDesiredHookEntry(entry, desiredHook, event, options = {}) {
   );
 }
 
-function managedHookIntent(entries) {
+function managedHookIntent(entries, ownsHook = isClawdZcodeHook) {
   let found = 0;
   let foundEnabled = false;
   if (!Array.isArray(entries)) return { found, enabled: true };
@@ -333,13 +374,13 @@ function managedHookIntent(entries) {
     // Old flat command entries are not part of ZCode's current wrapper schema.
     // Treat them as enabled while migrating; entry-level `enabled` is not a
     // supported substitute for hook.enabled.
-    if (isClawdZcodeHook(entry)) {
+    if (ownsHook(entry)) {
       found++;
       foundEnabled = true;
     }
     if (!Array.isArray(entry.hooks)) continue;
     for (const hook of entry.hooks) {
-      if (!isClawdZcodeHook(hook)) continue;
+      if (!ownsHook(hook)) continue;
       found++;
       if (hook.enabled !== false) foundEnabled = true;
     }
@@ -351,10 +392,10 @@ function managedHookIntent(entries) {
   };
 }
 
-function normalizeHookEntries(entries, desiredHook, event) {
+function normalizeHookEntries(entries, desiredHook, event, ownsHook = isClawdZcodeHook) {
   if (!Array.isArray(entries)) return { matched: false, changed: false };
 
-  const intent = managedHookIntent(entries);
+  const intent = managedHookIntent(entries, ownsHook);
   const desiredOptions = { enabled: intent.enabled };
   let matched = false;
   let changed = false;
@@ -364,7 +405,7 @@ function normalizeHookEntries(entries, desiredHook, event) {
     const entry = entries[index];
     if (!entry || typeof entry !== "object") continue;
 
-    if (isClawdZcodeHook(entry)) {
+    if (ownsHook(entry)) {
       matched = true;
       if (dedicatedIndex === -1) {
         replaceEntry(entry, buildZcodeHookEntry(desiredHook, event, desiredOptions));
@@ -382,7 +423,7 @@ function normalizeHookEntries(entries, desiredHook, event) {
     const otherHooks = [];
     let clawdHookCount = 0;
     for (const hook of entry.hooks) {
-      if (isClawdZcodeHook(hook)) clawdHookCount++;
+      if (ownsHook(hook)) clawdHookCount++;
       else otherHooks.push(hook);
     }
     if (clawdHookCount === 0) continue;
@@ -480,8 +521,16 @@ function registerZcodeHooks(options = {}) {
   const settings = readSettings(settingsPath);
   const warnings = [];
 
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const ownership = getZcodeHookOwnership(options);
+  const { ownsHook } = ownership;
+  const hookScript = ownership.store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS.zcode)
+    : asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
+  // Store build: the bundled launcher is not a Node executable, so ZCode
+  // registration below refuses it just as it refuses a bare "node".
+  const resolved = ownership.store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingZcodeNodeBin(settings, MARKER);
   if (!isAbsoluteNodeBin(nodeBin)) {
@@ -514,7 +563,7 @@ function registerZcodeHooks(options = {}) {
   // would fire alongside zcode-hook.js — producing a spurious Claude-Code
   // session for a real ZCode session. Strip those Clawd-owned entries first
   // (third-party hooks preserved, ~/.claude/settings.json untouched).
-  const migrated = stripMigratedClaudeHooks(events);
+  const migrated = stripMigratedClaudeHooks(events, ownership);
   if (migrated.changed) changed = true;
 
   let added = 0;
@@ -532,7 +581,7 @@ function registerZcodeHooks(options = {}) {
   const allPhase1StateHooksExplicitlyDisabled = () => {
     for (const event of ZCODE_HOOK_EVENTS) {
       if (event === "PermissionRequest") continue;
-      const intent = managedHookIntent(events[event]);
+      const intent = managedHookIntent(events[event], ownsHook);
       // Every Phase 1 event must have at least one managed hook, and every
       // managed hook for that event must be explicitly disabled. A partial or
       // foreign-only config is not evidence of a six-event Clawd opt-out.
@@ -551,10 +600,10 @@ function registerZcodeHooks(options = {}) {
     if (!Array.isArray(entries)) return foreign;
     for (const entry of entries) {
       if (!entry || typeof entry !== "object") continue;
-      if (!isClawdZcodeHook(entry) && typeof entry.command === "string") foreign.push(entry);
+      if (!ownsHook(entry) && typeof entry.command === "string") foreign.push(entry);
       if (!Array.isArray(entry.hooks)) continue;
       for (const hook of entry.hooks) {
-        if (hook && typeof hook === "object" && !isClawdZcodeHook(hook)) foreign.push(hook);
+        if (hook && typeof hook === "object" && !ownsHook(hook)) foreign.push(hook);
       }
     }
     return foreign;
@@ -570,7 +619,7 @@ function registerZcodeHooks(options = {}) {
     if (event === "PermissionRequest") {
       const foreign = foreignPermissionRequestHooks();
       if (foreign.length > 0) {
-        const managedIntent = managedHookIntent(events.PermissionRequest);
+        const managedIntent = managedHookIntent(events.PermissionRequest, ownsHook);
         if (managedIntent.found > 0) {
           // A foreign hook may be added after Clawd was already installed. A
           // warning alone still leaves the unsafe last-wins chain active, so
@@ -579,7 +628,7 @@ function registerZcodeHooks(options = {}) {
           // Clawd again; no ambiguous auto-disabled state is persisted.
           const removedManaged = removeMatchingZcodeHooks(
             events.PermissionRequest,
-            isClawdZcodeHook
+            ownsHook
           );
           events.PermissionRequest = removedManaged.entries;
           if (removedManaged.changed) {
@@ -603,11 +652,11 @@ function registerZcodeHooks(options = {}) {
       changed = true;
     }
 
-    const existingIntent = managedHookIntent(events[event]);
+    const existingIntent = managedHookIntent(events[event], ownsHook);
     if (existingIntent.found > 0 && existingIntent.enabled === false) {
       disabledManagedEvents.push(event);
     }
-    const result = normalizeHookEntries(events[event], desiredHook, event);
+    const result = normalizeHookEntries(events[event], desiredHook, event, ownsHook);
     if (result.changed) changed = true;
 
     if (result.matched) {
@@ -619,7 +668,7 @@ function registerZcodeHooks(options = {}) {
       if (event === "PermissionRequest" && allPhase1StateHooksExplicitlyDisabled()) {
         const managedHook = events.PermissionRequest
           .flatMap((entry) => (Array.isArray(entry.hooks) ? entry.hooks : []))
-          .find((hook) => isClawdZcodeHook(hook));
+          .find((hook) => ownsHook(hook));
         if (managedHook && managedHook.enabled !== false) {
           managedHook.enabled = false;
           changed = true;
@@ -683,12 +732,13 @@ function unregisterZcodeHooks(options = {}) {
     return { removed: 0, changed: false, settingsPath };
   }
 
+  const ownership = getZcodeHookOwnership(options);
   let removed = 0;
   let changed = false;
   for (const event of ZCODE_HOOK_EVENTS) {
     const entries = events[event];
     if (!Array.isArray(entries)) continue;
-    const result = removeMatchingZcodeHooks(entries, isClawdZcodeHook);
+    const result = removeMatchingZcodeHooks(entries, ownership.ownsHook);
     if (!result.changed) continue;
     removed += result.removed;
     changed = true;
@@ -700,7 +750,7 @@ function unregisterZcodeHooks(options = {}) {
   // config — they only ever produce spurious Claude-Code sessions here, so
   // uninstalling the ZCode integration removes them too. Third-party hooks
   // remain; ~/.claude/settings.json is never touched.
-  const migrated = stripMigratedClaudeHooks(events);
+  const migrated = stripMigratedClaudeHooks(events, ownership);
   if (migrated.changed) {
     removed += migrated.removed;
     changed = true;

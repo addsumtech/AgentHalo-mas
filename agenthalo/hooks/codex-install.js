@@ -15,6 +15,12 @@ const {
   removeStableCodexHookLauncher,
   unregisterCodexCommandHooks,
 } = require("./codex-install-utils");
+const {
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 
 const MARKER = "codex-hook.js";
 const CODEX_OFFICIAL_HOOK_EVENTS = CODEX_HOOK_EVENTS;
@@ -23,11 +29,26 @@ function buildCodexStateHookCommand(nodeBin, hookScript, platform = process.plat
   return buildCodexHookCommand(nodeBin, hookScript, platform);
 }
 
+// Mac App Store build: its commands run its own entry script, and it only
+// touches those (see hooks/store-hook-ownership.js); every other install owns
+// the commands that mention codex-hook.js. It never writes the stable launcher
+// into ~/.codex (App Review 2.4.5(ii)), so the one found there is not its own.
+function getCodexStoreOptions(options = {}) {
+  if (!isStoreHookInstall(options)) return null;
+  return {
+    nodeBin: storeNodeBin(options),
+    ownsCommand: hookCommandOwner(options, { agentId: "codex", marker: MARKER }),
+    scriptName: STORE_HOOK_SCRIPTS.codex,
+  };
+}
+
 function registerCodexHooks(options = {}) {
+  const store = getCodexStoreOptions(options);
   return registerCodexCommandHooks({
     ...options,
+    ...(store ? { nodeBin: store.nodeBin, ownsCommand: store.ownsCommand } : {}),
     marker: MARKER,
-    scriptName: MARKER,
+    scriptName: store ? store.scriptName : MARKER,
     events: CODEX_OFFICIAL_HOOK_EVENTS,
     label: "Codex official hooks",
     // Codex trusts the resolved command shape. POSIX keeps a stable wrapper;
@@ -35,17 +56,21 @@ function registerCodexHooks(options = {}) {
     // flags the former inline data-sidecar dispatcher. In-place app upgrades
     // keep the direct path stable, while a real Node/hook path change requires
     // a fresh Codex /hooks review.
-    stableLauncher: options.remote !== true && options.stableLauncher !== false,
+    stableLauncher: !store && options.remote !== true && options.stableLauncher !== false,
   });
 }
 
 function unregisterCodexHooks(options = {}) {
+  const store = getCodexStoreOptions(options);
   const result = unregisterCodexCommandHooks({
     ...options,
+    ...(store ? { ownsCommand: store.ownsCommand } : {}),
     marker: MARKER,
     events: CODEX_OFFICIAL_HOOK_EVENTS,
   });
-  const stableLauncher = removeStableCodexHookLauncher(options);
+  const stableLauncher = store
+    ? { changed: false, launcherRemoved: 0, manifestRemoved: 0 }
+    : removeStableCodexHookLauncher(options);
   return {
     ...result,
     changed: result.changed === true || stableLauncher.changed,

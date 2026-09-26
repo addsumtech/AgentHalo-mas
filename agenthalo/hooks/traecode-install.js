@@ -18,6 +18,13 @@ const {
   removeMatchingCommandHooks,
   formatNodeHookCommand,
 } = require("./json-utils");
+const {
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 const MARKER = "traecode-hook.js";
 const DEFAULT_PARENT_DIR = path.join(os.homedir(), ".trae-cn");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_PARENT_DIR, "hooks.json");
@@ -31,6 +38,16 @@ const TRAECODE_HOOK_EVENTS = [
   "Stop",
   "Notification",
 ];
+
+// Every clawd install owns the commands that mention traecode-hook.js; the Mac
+// App Store build owns only its own (see hooks/store-hook-ownership.js).
+function getTraeCodeCommandOwner(options = {}) {
+  return hookCommandOwner(options, {
+    agentId: "traecode",
+    marker: MARKER,
+    matchesMarker: (command) => commandMatchesMarker(command, MARKER),
+  });
+}
 
 /**
  * Register Clawd hooks into ~/.trae-cn/hooks.json
@@ -54,7 +71,11 @@ function registerTraeCodeHooks(options = {}) {
     }
   }
 
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, "traecode-hook.js").replace(/\\/g, "/"));
+  const store = isStoreHookInstall(options);
+  const ownsCommand = getTraeCodeCommandOwner(options);
+  const hookScript = store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS.traecode)
+    : asarUnpackedPath(path.resolve(__dirname, "traecode-hook.js").replace(/\\/g, "/"));
 
   let settings = {};
   try {
@@ -90,7 +111,9 @@ function registerTraeCodeHooks(options = {}) {
   }
 
   // Resolve node path; if detection fails, preserve existing absolute path
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const resolved = store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
@@ -136,7 +159,7 @@ function registerTraeCodeHooks(options = {}) {
       if (Array.isArray(innerHooks)) {
         for (const h of innerHooks) {
           if (!h || !h.command) continue;
-          if (!commandMatchesMarker(h.command, MARKER)) continue;
+          if (!ownsCommand(h.command)) continue;
           found = true;
           if (h.command !== desiredCommand) {
             h.command = desiredCommand;
@@ -155,7 +178,7 @@ function registerTraeCodeHooks(options = {}) {
       // Also check flat format for migration — convert owned flat entries to
       // the documented nested shape ({ matcher: "", hooks: [{ type, command }] })
       // instead of leaving them flat.
-      if (!found && commandMatchesMarker(entry.command, MARKER)) {
+      if (!found && ownsCommand(entry.command)) {
         found = true;
         if (entry.hooks != null && !Array.isArray(entry.hooks)) {
           throw new Error(`Refusing to modify ${hooksPath}: managed flat hook has unrecognized nested hooks`);
@@ -220,12 +243,13 @@ function unregisterTraeCodeHooks(options = {}) {
     return { removed: 0, changed: false, hooksPath };
   }
 
+  const ownsCommand = getTraeCodeCommandOwner(options);
   let removed = 0;
   let changed = false;
   for (const event of TRAECODE_HOOK_EVENTS) {
     const entries = settings.hooks[event];
     if (!Array.isArray(entries)) continue;
-    const result = removeMatchingCommandHooks(entries, (command) => commandMatchesMarker(command, MARKER));
+    const result = removeMatchingCommandHooks(entries, ownsCommand);
     if (!result.changed) continue;
     removed += result.removed;
     changed = true;

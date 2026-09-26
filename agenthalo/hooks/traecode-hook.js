@@ -272,11 +272,16 @@ function main(deps = {}) {
     .catch(() => finish("{}"));
 }
 
-if (require.main === module) {
+// What `node traecode-hook.js` runs; the store build's entry script runs it too
+// (see hooks/store-hook-ownership.js).
+function runCli() {
   main();
 }
 
+if (require.main === module) runCli();
+
 module.exports = {
+  runCli,
   __test: {
     resolveSessionTitle,
     extractPromptTitle,

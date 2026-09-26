@@ -528,7 +528,9 @@ async function main(argvEvent = process.argv[2], deps = {}) {
   process.stdout.write(result.stdout + "\n");
 }
 
-if (require.main === module) {
+// What `node antigravity-hook.js` runs; the store build's entry script runs it too
+// (see hooks/store-hook-ownership.js).
+function runCli() {
   main()
     .catch((err) => {
       // Antigravity treats a hook command failure as an agent failure. This
@@ -545,7 +547,10 @@ if (require.main === module) {
     });
 }
 
+if (require.main === module) runCli();
+
 module.exports = {
+  runCli,
   __test: {
     buildStateBody,
     buildPermissionBody,

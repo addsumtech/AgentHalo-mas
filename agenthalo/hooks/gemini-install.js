@@ -15,7 +15,16 @@ const {
   formatNodeHookCommand,
   removeMatchingCommandHooks,
 } = require("./json-utils");
+const {
+  STORE_HOOK_NAME,
+  STORE_HOOK_SCRIPTS,
+  hookCommandOwner,
+  isStoreHookInstall,
+  storeHookScriptPath,
+  storeNodeBin,
+} = require("./store-hook-ownership");
 const MARKER = "gemini-hook.js";
+const HOOK_NAME = "clawd";
 const DEFAULT_PARENT_DIR = path.join(os.homedir(), ".gemini");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_PARENT_DIR, "settings.json");
 
@@ -34,10 +43,28 @@ function isClawdHookCommand(command) {
   return typeof command === "string" && command.includes(MARKER);
 }
 
-function buildGeminiHookEntry(command) {
+// Which entries this install owns. Every clawd install owns the commands that
+// mention gemini-hook.js and the hook name "clawd"; the Mac App Store build
+// owns only its own (see hooks/store-hook-ownership.js).
+const CLAWD_GEMINI_OWNERSHIP = Object.freeze({
+  store: false,
+  hookName: HOOK_NAME,
+  ownsCommand: isClawdHookCommand,
+});
+
+function getGeminiHookOwnership(options = {}) {
+  if (!isStoreHookInstall(options)) return CLAWD_GEMINI_OWNERSHIP;
+  return {
+    store: true,
+    hookName: STORE_HOOK_NAME,
+    ownsCommand: hookCommandOwner(options, { agentId: "gemini-cli", marker: MARKER }),
+  };
+}
+
+function buildGeminiHookEntry(command, hookName = HOOK_NAME) {
   return {
     matcher: "*",
-    hooks: [{ name: "clawd", type: "command", command }],
+    hooks: [{ name: hookName, type: "command", command }],
   };
 }
 
@@ -50,7 +77,7 @@ function replaceEntry(target, source) {
   Object.assign(target, source);
 }
 
-function isDesiredGeminiHookEntry(entry, desiredCommand) {
+function isDesiredGeminiHookEntry(entry, desiredCommand, hookName = HOOK_NAME) {
   return !!(
     entry
     && typeof entry === "object"
@@ -58,15 +85,16 @@ function isDesiredGeminiHookEntry(entry, desiredCommand) {
     && Array.isArray(entry.hooks)
     && entry.hooks.length === 1
     && entry.hooks[0]
-    && entry.hooks[0].name === "clawd"
+    && entry.hooks[0].name === hookName
     && entry.hooks[0].type === "command"
     && entry.hooks[0].command === desiredCommand
   );
 }
 
-function normalizeGeminiHookEntries(entries, desiredCommand) {
+function normalizeGeminiHookEntries(entries, desiredCommand, ownership = CLAWD_GEMINI_OWNERSHIP) {
   if (!Array.isArray(entries)) return { matched: false, changed: false };
 
+  const { hookName, ownsCommand } = ownership;
   let matched = false;
   let changed = false;
   let dedicatedIndex = -1;
@@ -75,10 +103,10 @@ function normalizeGeminiHookEntries(entries, desiredCommand) {
     const entry = entries[index];
     if (!entry || typeof entry !== "object") continue;
 
-    if (isClawdHookCommand(entry.command)) {
+    if (ownsCommand(entry.command)) {
       matched = true;
       if (dedicatedIndex === -1) {
-        replaceEntry(entry, buildGeminiHookEntry(desiredCommand));
+        replaceEntry(entry, buildGeminiHookEntry(desiredCommand, hookName));
         dedicatedIndex = index;
         changed = true;
       } else {
@@ -93,7 +121,7 @@ function normalizeGeminiHookEntries(entries, desiredCommand) {
     const otherHooks = [];
     let clawdHookCount = 0;
     for (const hook of entry.hooks) {
-      if (hook && isClawdHookCommand(hook.command)) {
+      if (hook && ownsCommand(hook.command)) {
         clawdHookCount++;
       } else {
         otherHooks.push(hook);
@@ -109,8 +137,8 @@ function normalizeGeminiHookEntries(entries, desiredCommand) {
     }
 
     if (dedicatedIndex === -1) {
-      if (!isDesiredGeminiHookEntry(entry, desiredCommand)) {
-        replaceEntry(entry, buildGeminiHookEntry(desiredCommand));
+      if (!isDesiredGeminiHookEntry(entry, desiredCommand, hookName)) {
+        replaceEntry(entry, buildGeminiHookEntry(desiredCommand, hookName));
         changed = true;
       }
       dedicatedIndex = index;
@@ -125,28 +153,29 @@ function normalizeGeminiHookEntries(entries, desiredCommand) {
   if (!matched) return { matched: false, changed: false };
 
   if (dedicatedIndex === -1) {
-    entries.push(buildGeminiHookEntry(desiredCommand));
+    entries.push(buildGeminiHookEntry(desiredCommand, hookName));
     return { matched: true, changed: true };
   }
 
   const dedicatedEntry = entries[dedicatedIndex];
-  if (!isDesiredGeminiHookEntry(dedicatedEntry, desiredCommand)) {
-    replaceEntry(dedicatedEntry, buildGeminiHookEntry(desiredCommand));
+  if (!isDesiredGeminiHookEntry(dedicatedEntry, desiredCommand, hookName)) {
+    replaceEntry(dedicatedEntry, buildGeminiHookEntry(desiredCommand, hookName));
     changed = true;
   }
   return { matched: true, changed };
 }
 
-function normalizeGeminiDisabledHooks(settings) {
+function normalizeGeminiDisabledHooks(settings, ownership = CLAWD_GEMINI_OWNERSHIP) {
   const hooksConfig = settings && typeof settings === "object" ? settings.hooksConfig : null;
   if (!hooksConfig || typeof hooksConfig !== "object" || !Array.isArray(hooksConfig.disabled)) return false;
 
+  const { hookName, ownsCommand } = ownership;
   let changed = false;
   let sawClawd = false;
   const nextDisabled = [];
 
   for (const entry of hooksConfig.disabled) {
-    if (entry === "clawd") {
+    if (entry === hookName) {
       if (sawClawd) {
         changed = true;
         continue;
@@ -156,9 +185,9 @@ function normalizeGeminiDisabledHooks(settings) {
       continue;
     }
 
-    if (isClawdHookCommand(entry)) {
+    if (ownsCommand(entry)) {
       if (!sawClawd) {
-        nextDisabled.push("clawd");
+        nextDisabled.push(hookName);
         sawClawd = true;
       }
       changed = true;
@@ -191,7 +220,10 @@ function registerGeminiHooks(options = {}) {
     return { added: 0, skipped: 0, updated: 0 };
   }
 
-  const hookScript = asarUnpackedPath(path.resolve(__dirname, "gemini-hook.js").replace(/\\/g, "/"));
+  const ownership = getGeminiHookOwnership(options);
+  const hookScript = ownership.store
+    ? storeHookScriptPath(STORE_HOOK_SCRIPTS["gemini-cli"])
+    : asarUnpackedPath(path.resolve(__dirname, "gemini-hook.js").replace(/\\/g, "/"));
 
   let settings = {};
   try {
@@ -203,7 +235,9 @@ function registerGeminiHooks(options = {}) {
   }
 
   // Resolve node path; if detection fails, preserve existing absolute path
-  const resolved = options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin();
+  const resolved = ownership.store
+    ? storeNodeBin(options)
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingNodeBin(settings, MARKER, { nested: true })
     || "node";
@@ -214,7 +248,7 @@ function registerGeminiHooks(options = {}) {
   let changed = false;
 
   if (!settings.hooks || typeof settings.hooks !== "object") settings.hooks = {};
-  if (normalizeGeminiDisabledHooks(settings)) changed = true;
+  if (normalizeGeminiDisabledHooks(settings, ownership)) changed = true;
 
   for (const event of GEMINI_HOOK_EVENTS) {
     const desiredCommand = buildGeminiHookCommand(nodeBin, hookScript, event);
@@ -224,7 +258,7 @@ function registerGeminiHooks(options = {}) {
     }
 
     const arr = settings.hooks[event];
-    const result = normalizeGeminiHookEntries(arr, desiredCommand);
+    const result = normalizeGeminiHookEntries(arr, desiredCommand, ownership);
     const found = result.matched;
     const entryChanged = result.changed;
     if (entryChanged) changed = true;
@@ -238,7 +272,7 @@ function registerGeminiHooks(options = {}) {
       continue;
     }
 
-    arr.push(buildGeminiHookEntry(desiredCommand));
+    arr.push(buildGeminiHookEntry(desiredCommand, ownership.hookName));
     added++;
     changed = true;
   }
@@ -271,12 +305,16 @@ function unregisterGeminiHooks(options = {}) {
     return { removed: 0, changed: false, settingsPath };
   }
 
+  const ownership = getGeminiHookOwnership(options);
+  const ownsCommand = ownership.store
+    ? ownership.ownsCommand
+    : (command) => commandMatchesMarker(command, MARKER);
   let removed = 0;
   let changed = false;
   for (const event of GEMINI_HOOK_EVENTS) {
     const entries = settings.hooks[event];
     if (!Array.isArray(entries)) continue;
-    const result = removeMatchingCommandHooks(entries, (command) => commandMatchesMarker(command, MARKER));
+    const result = removeMatchingCommandHooks(entries, ownsCommand);
     if (!result.changed) continue;
     removed += result.removed;
     changed = true;
