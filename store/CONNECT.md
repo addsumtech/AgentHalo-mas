@@ -15,7 +15,7 @@ Bundle id：`com.addsum.agenthalo`
 - 审核备注和商店文案只链接本仓库。不要链接完整版仓库，它自带第三方角色。
 - App 隐私（App Privacy）问卷：开发者不收集任何数据，选「不收集数据」（Data Not Collected）。
 - 截图只出现商店版角色，尺寸见文末。
-- 按下面「审核备注」里的建议，附一段屏幕录像。
+- 屏幕录像不是必需的：审核备注里的 A、B 两条路径不装任何 AI 工具就能验证全部功能。只有审核回复说无法测试时，再按文末「屏幕录像（备用）」录一段，在回复里附上。
 
 ## 中文
 
@@ -98,7 +98,13 @@ These commands send the same local messages a tool's hook sends. AgentHalo liste
 
    curl -X POST http://127.0.0.1:23333/state -H 'Content-Type: application/json' -d '{"agent_id":"claude-code","session_id":"review-demo","state":"attention","event":"Stop"}'
 
-C. The attached screen recording shows the full flow with Claude Code: choosing the ~/.claude folder in Settings → Connected apps, starting a task in Terminal, the companion reacting, a permission bubble being answered, and the done animation.
+C. With Claude Code installed
+
+1. In Settings → Connected apps, click "Choose folder" next to Claude Code and select ~/.claude in the system panel (hidden folders are shown). The row changes to connected.
+2. In Terminal, run claude and ask for something that edits a file or runs a command. The companion switches to working and the task appears in "Open tasks".
+3. When Claude Code asks for permission, the bubble appears next to the companion; click Allow.
+4. When the task finishes, the companion plays its done animation.
+5. Back in Settings → Connected apps, turn Claude Code off and choose to disconnect it. AgentHalo removes its hook entries from ~/.claude/settings.json.
 
 WHY A LOCAL SERVER (network.server)
 
@@ -132,7 +138,9 @@ Contact: addsumtech@gmail.com
 
 ---
 
-屏幕录像（C 项）请在 App Review Information 里作为附件上传，时长控制在 1–2 分钟，需要依次拍到：
+### 屏幕录像（备用）
+
+默认不用录。如果审核回复说无法测试，再录一段 1–2 分钟的录像，在 Resolution Center 的回复里附上，依次拍到：
 
 1. 设置 → 连接应用 → Claude Code → 选择文件夹，系统面板里选中 `~/.claude` 并授权；
 2. 在终端里启动 Claude Code 并提一个会改文件或运行命令的问题，桌宠切到工作中，任务列表里出现这个任务；
