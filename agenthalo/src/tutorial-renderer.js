@@ -713,8 +713,6 @@
       platformStarter,
       featureCard("tutorialFeatureThemes", "Themes and mini mode",
         "tutorialFeatureThemesDesc", "Switch character themes, or tuck AgentHalo against a screen edge."),
-      featureCard("tutorialFeatureWebChats", "Follow web chats",
-        "tutorialFeatureWebChatsDesc", "Add the browser extension to follow Claude, ChatGPT and Gemini in your browser."),
       featureCard("tutorialFeatureAuto", "Auto-approve requests",
         "tutorialFeatureAutoDesc", "Enable only when you fully trust the agent; every request is allowed automatically.", null, "advanced"),
     );
