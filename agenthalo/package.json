@@ -57,7 +57,8 @@
     "uninstall:dsh": "node hooks/dsh-install.js --uninstall",
     "cleanup:integrations": "node hooks/cleanup-integrations.js --apply",
     "register-protocol:dev": "node launch.js --register-protocol",
-    "build:mas": "electron-builder --mac mas"
+    "build:mas": "electron-builder --mac mas",
+    "build:mas-dev": "electron-builder --mac mas-dev --universal"
   },
   "keywords": [
     "agenthalo",
@@ -249,6 +250,10 @@
       "files": [
         "!**/node_modules/koffi{,/**/*}"
       ]
+    },
+    "masDev": {
+      "identity": "LI JIE",
+      "provisioningProfile": "build/development.provisionprofile"
     }
   },
   "engines": {

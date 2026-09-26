@@ -19,10 +19,13 @@ The repository-root `.github/workflows/ci.yml` runs `npm ci`, `npm test` and
 4. On a Mac with the "Apple Distribution" and "Mac Installer Distribution"
    certificates in the login keychain and `build/embedded.provisionprofile`
    in place, run `npm run build:mas`.
-5. Before uploading, build a development copy with an "Apple Development"
-   certificate and a development provisioning profile
-   (`npx electron-builder --mac mas-dev -c.masDev.provisioningProfile=<profile>`),
-   launch it, and check:
+5. Before uploading, build a universal development copy: put an "Apple
+   Development" certificate in the login keychain, save a macOS development
+   provisioning profile for `com.addsum.agenthalo` that includes this Mac as
+   `build/development.provisionprofile` (git ignores it), and run
+   `npm run build:mas-dev`. If the certificate is not named after
+   `build.masDev.identity`, add `-c.masDev.identity="<name in the certificate>"`.
+   Launch the app from `dist/mas-dev-universal/` and check:
    - the app starts (asar integrity and the Electron fuses hold for the
      universal binary: `npx @electron/fuses read --app <path to AgentHalo.app>`);
    - authorizing `~/.claude` and `~/.codex` from Settings → Agents works, hooks

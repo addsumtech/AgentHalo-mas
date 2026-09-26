@@ -80,3 +80,7 @@ Microsoft/
 
 # Emoji export scratch
 clawd-emoji-final/
+
+# Development provisioning profile for `npm run build:mas-dev`. It lists the
+# UDIDs of your test Macs, so it stays local.
+/build/development.provisionprofile

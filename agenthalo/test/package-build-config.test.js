@@ -50,8 +50,9 @@ describe("Mac App Store configuration", () => {
     for (const script of ["build", "build:mac", "build:mas"]) {
       assert.strictEqual(pkg.scripts[script], "electron-builder --mac mas", script);
     }
+    // build:mas-dev only signs a local test copy; it never produces a package.
     const buildScripts = Object.keys(pkg.scripts).filter((name) => /^build(?::|$)/.test(name));
-    assert.deepStrictEqual(buildScripts.sort(), ["build", "build:mac", "build:mas"]);
+    assert.deepStrictEqual(buildScripts.sort(), ["build", "build:mac", "build:mas", "build:mas-dev"]);
     assert.match(pkg.devDependencies["@electron/asar"], /^\^3\./);
   });
 
@@ -67,6 +68,22 @@ describe("Mac App Store configuration", () => {
     // A signed profile is a CMS blob that embeds the plist naming the app.
     assert.ok(profile.includes(Buffer.from("com.addsum.agenthalo")), "profile should be for com.addsum.agenthalo");
     assert.match(mas.artifactName, /-mas\.\$\{ext\}$/);
+  });
+
+  it("builds a universal development copy with a development certificate and a local profile", () => {
+    assert.strictEqual(pkg.scripts["build:mas-dev"], "electron-builder --mac mas-dev --universal");
+    const masDev = pkg.build.masDev;
+    // mas-dev inherits every mas option, so the distribution identity and
+    // profile have to be replaced. An "Apple Development" certificate carries
+    // the developer's own id in parentheses, not the team id, so the team
+    // qualifier of mas.identity would never match it.
+    assert.ok(masDev.identity && !masDev.identity.includes("("), "masDev.identity should name the developer only");
+    assert.ok(pkg.build.mas.identity.startsWith(masDev.identity));
+    assert.strictEqual(masDev.provisioningProfile, "build/development.provisionprofile");
+    assert.notStrictEqual(masDev.provisioningProfile, pkg.build.mas.provisioningProfile);
+    assert.strictEqual(masDev.type, undefined, "electron-builder forces development for mas-dev");
+    const ignore = fs.readFileSync(path.join(ROOT, ".gitignore"), "utf8");
+    assert.match(ignore, /^\/build\/development\.provisionprofile$/m, "the development profile lists device UDIDs");
   });
 
   it("signs with minimal App Sandbox entitlements", () => {
