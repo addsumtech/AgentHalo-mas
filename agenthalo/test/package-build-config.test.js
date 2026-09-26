@@ -47,8 +47,10 @@ describe("Mac App Store configuration", () => {
     for (const key of ["win", "nsis", "linux", "appImage", "deb", "dmg", "afterPack", "afterSign"]) {
       assert.strictEqual(pkg.build[key], undefined, `build.${key} belongs to a non-store pipeline`);
     }
+    // Naming the target on the command line drops build.mac.target's arch, so
+    // without --universal electron-builder packages only the host architecture.
     for (const script of ["build", "build:mac", "build:mas"]) {
-      assert.strictEqual(pkg.scripts[script], "electron-builder --mac mas", script);
+      assert.strictEqual(pkg.scripts[script], "electron-builder --mac mas --universal", script);
     }
     // build:mas-dev only signs a local test copy; it never produces a package.
     const buildScripts = Object.keys(pkg.scripts).filter((name) => /^build(?::|$)/.test(name));
