@@ -42,7 +42,7 @@ Drag it anywhere. Settings → Preferences adjusts size, and Do Not Disturb sile
 
 ## Purchase and refunds
 
-AgentHalo is a one-time purchase on the Mac App Store, with no in-app purchases or subscriptions. Apple handles the payment; we never see your payment details. To install it on another Mac, sign in to the App Store there with the same Apple ID and download it again at no extra cost. For a refund, request one from Apple at [reportaproblem.apple.com](https://reportaproblem.apple.com).
+AgentHalo is free on the Mac App Store in mainland China and a one-time purchase in other countries and regions, with no in-app purchases or subscriptions. Apple handles the payment; we never see your payment details. To install it on another Mac, sign in to the App Store there with the same Apple ID and download it again at no extra cost. For a refund, request one from Apple at [reportaproblem.apple.com](https://reportaproblem.apple.com).
 
 ## Uninstalling
 
@@ -110,7 +110,7 @@ AgentHalo 跟随系统：Mac 静音或输出音量为零时它会保持安静。
 
 ## 购买与退款
 
-AgentHalo 在 Mac App Store 一次性购买，没有应用内购买，也没有订阅。付款由 Apple 处理，我们看不到你的支付信息。在另一台 Mac 上用同一个 Apple ID 登录 App Store，就可以免费再次下载。需要退款，请到 [reportaproblem.apple.com](https://reportaproblem.apple.com) 向 Apple 申请。
+AgentHalo 在中国大陆的 Mac App Store 免费，在其他国家和地区一次性购买，没有应用内购买，也没有订阅。付款由 Apple 处理，我们看不到你的支付信息。在另一台 Mac 上用同一个 Apple ID 登录 App Store，就可以免费再次下载。需要退款，请到 [reportaproblem.apple.com](https://reportaproblem.apple.com) 向 Apple 申请。
 
 ## 卸载
 
