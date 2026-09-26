@@ -11,6 +11,13 @@ const SERVER_PORT_COUNT = 5;
 const SERVER_PORTS = Array.from({ length: SERVER_PORT_COUNT }, (_, i) => DEFAULT_SERVER_PORT + i);
 const STATE_PATH = "/state";
 const PERMISSION_PATH = "/permission";
+// Mac App Store build: the path its Claude Code PermissionRequest hook posts
+// to. Another AgentHalo install (bundle com.agenthalo.desktop, or any clawd
+// build) treats every http://127.0.0.1:<23333-23337>/permission URL as its own
+// and rewrites it to its own port, so the store build's URL must not look like
+// one (see isManagedPermissionUrl). It deliberately does not contain
+// "/permission" either, which older builds matched as a plain substring.
+const STORE_PERMISSION_PATH = "/agenthalo-store/approval";
 const DEFAULT_HOOK_HTTP_TIMEOUT_MS = 100;
 const REMOTE_HOOK_HTTP_TIMEOUT_MS = 5000;
 const REMOTE_IDENTITY_FILENAME = "clawd-remote.json";
@@ -633,6 +640,30 @@ function isManagedPermissionUrl(value) {
       && parsed.username === ""
       && parsed.password === ""
       && SERVER_PORTS.includes(port);
+  } catch {
+    return false;
+  }
+}
+
+function buildStorePermissionUrl(port) {
+  const safePort = normalizePort(port) || DEFAULT_SERVER_PORT;
+  return `http://127.0.0.1:${safePort}${STORE_PERMISSION_PATH}`;
+}
+
+// Ownership test for the store build's PermissionRequest hook: only URLs
+// buildStorePermissionUrl could have written.
+function isStorePermissionUrl(value) {
+  if (typeof value !== "string") return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:"
+      && parsed.hostname === "127.0.0.1"
+      && parsed.pathname === STORE_PERMISSION_PATH
+      && parsed.search === ""
+      && parsed.hash === ""
+      && parsed.username === ""
+      && parsed.password === ""
+      && SERVER_PORTS.includes(Number(parsed.port));
   } catch {
     return false;
   }
@@ -1581,16 +1612,19 @@ module.exports = {
   SERVER_PORTS,
   SSH_SECURE_MARKER_FILENAME,
   STATE_PATH,
+  STORE_PERMISSION_PATH,
   CLAWD_HOOK_PID_HEADER,
   CLAWD_PROCESS_INSTANCE_HEADER,
   CLAWD_LEGACY_PROCESS_CACHE_HEADER,
   WINDOWS_PROCESS_CHAIN_VERSION,
   buildPermissionUrl,
+  buildStorePermissionUrl,
   buildWindowsProcessChainHeaders,
   clearRuntimeConfig,
   defaultCodexAutoStartGatePath,
   defaultRuntimeConfigPath,
   isManagedPermissionUrl,
+  isStorePermissionUrl,
   isRemoteHookMode,
   isSshSecureMode,
   discoverClawdPort,

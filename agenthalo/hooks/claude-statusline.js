@@ -242,7 +242,9 @@ async function main(deps = {}) {
   if (chainResult === "spawn-failed") writeStdout(`${text}\n`);
 }
 
-if (require.main === module) {
+// Entry point for `node claude-statusline.js` and the store build's
+// agenthalo-store-statusline.js.
+function run() {
   main().catch(() => {
     process.stdout.write("\n");
   }).finally(() => {
@@ -250,7 +252,10 @@ if (require.main === module) {
   });
 }
 
+if (require.main === module) run();
+
 module.exports = {
+  run,
   __test: {
     buildStatusLineText,
     buildStateBody,

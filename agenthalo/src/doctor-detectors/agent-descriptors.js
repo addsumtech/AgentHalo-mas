@@ -48,7 +48,9 @@ const AGENT_DESCRIPTORS = Object.freeze([
     configPath: claude.DEFAULT_CONFIG_PATH,
     configMode: "file",
     autoInstall: true,
-    marker: "clawd-hook.js",
+    // The store build's commands run its own entry script; clawd-hook.js
+    // commands there belong to another AgentHalo install.
+    marker: claude.isStoreClaudeInstall() ? claude.STORE_HOOK_SCRIPT : "clawd-hook.js",
     nested: true,
   }),
   Object.freeze({

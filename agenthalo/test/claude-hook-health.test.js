@@ -596,3 +596,62 @@ describe("hasNoAutomaticRepairWork / isExplicitRepairVerified", () => {
     assert.strictEqual(reportHasUnparseableCommand(null), false);
   });
 });
+
+describe("inspectClaudeHookHealth — store build ownership", () => {
+  const install = require("../hooks/install");
+  const { buildStorePermissionUrl } = require("../hooks/server-config");
+  const STORE_LAUNCHER = "/Applications/AgentHalo Store.app/Contents/Resources/app.asar.unpacked/hooks/node-launcher.sh";
+  const STORE_SCRIPT = "/Applications/AgentHalo Store.app/Contents/Resources/app.asar.unpacked/hooks/agenthalo-store-hook.js";
+  const OTHER_NODE = "/opt/homebrew/bin/node";
+  const OTHER_SCRIPT = "/Applications/AgentHalo.app/Contents/Resources/app.asar.unpacked/hooks/clawd-hook.js";
+
+  function posixHook(event, nodeBin, scriptPath) {
+    return { matcher: "", hooks: [{ type: "command", command: `"${nodeBin}" "${scriptPath}" ${event}` }] };
+  }
+
+  function storeOptions(overrides = {}) {
+    return {
+      platform: "darwin",
+      coreEvents: CLAUDE_CORE_HOOK_EVENTS,
+      ownership: install.getClaudeHookOwnership({ storeHooks: true }),
+      expectedHookScriptPath: STORE_SCRIPT,
+      expectedPermissionUrl: buildStorePermissionUrl(23334),
+      fs: makeFakeFs([STORE_LAUNCHER, STORE_SCRIPT, OTHER_NODE, OTHER_SCRIPT]),
+      ...overrides,
+    };
+  }
+
+  function settingsWith({ other = true, store = true, versioned = [] } = {}) {
+    const hooks = {};
+    for (const event of [...CLAUDE_CORE_HOOK_EVENTS, ...versioned]) {
+      hooks[event] = [];
+      if (other) hooks[event].push(posixHook(event, OTHER_NODE, OTHER_SCRIPT));
+      if (store) hooks[event].push(posixHook(event, STORE_LAUNCHER, STORE_SCRIPT));
+    }
+    hooks.PermissionRequest = [];
+    if (other) hooks.PermissionRequest.push(permissionHook("http://127.0.0.1:23333/permission"));
+    if (store) hooks.PermissionRequest.push(permissionHook(buildStorePermissionUrl(23334)));
+    return JSON.stringify({ hooks });
+  }
+
+  it("is healthy next to another install's hooks and never calls them stale", () => {
+    const report = inspectClaudeHookHealth(settingsWith(), storeOptions());
+    assert.strictEqual(report.status, "healthy", JSON.stringify(report.issues));
+    assert.strictEqual(report.commandCount, CLAUDE_CORE_HOOK_EVENTS.length);
+  });
+
+  it("reports only its own missing entries", () => {
+    const report = inspectClaudeHookHealth(settingsWith({ store: false }), storeOptions());
+    const codes = report.issues.map((issue) => issue.code).sort();
+    assert.deepStrictEqual(codes, ["missing-managed-core-hooks", "permission-url-mismatch"]);
+  });
+
+  it("keeps the default rules unless the store build's are passed", () => {
+    const report = inspectClaudeHookHealth(settingsWith({ store: false }), storeOptions({
+      ownership: install.getClaudeHookOwnership({ storeHooks: false }),
+      expectedHookScriptPath: OTHER_SCRIPT,
+      expectedPermissionUrl: "http://127.0.0.1:23333/permission",
+    }));
+    assert.strictEqual(report.status, "healthy", JSON.stringify(report.issues));
+  });
+});

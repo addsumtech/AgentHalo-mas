@@ -227,6 +227,17 @@ describe("local hook server over real HTTP", () => {
     assert.strictEqual(pendingPermissions.length, 0);
   });
 
+  it("serves the store build's permission path like /permission", async () => {
+    const { STORE_PERMISSION_PATH } = require("../hooks/server-config");
+    const post = (path) => send({ path, headers: { "Content-Type": "application/json" }, body: "{}" });
+    const shared = await post("/permission");
+    const store = await post(STORE_PERMISSION_PATH);
+    assert.notStrictEqual(shared.status, 404);
+    assert.strictEqual(store.status, shared.status);
+    assert.strictEqual(store.text, shared.text);
+    assert.strictEqual((await post("/agenthalo-store/other")).status, 404);
+  });
+
   it("does not answer GET routes for a rebound hostname", async () => {
     for (const path of ["/state", "/web-bridge"]) {
       const res = await send({ method: "GET", path, headers: { Host: `evil.example:${port}` } });

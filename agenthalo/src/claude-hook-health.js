@@ -63,6 +63,15 @@ const REPAIR_CLASS_BY_CODE = Object.freeze({
   "duplicate-managed-state-hook": "managed-hook-duplicates",
 });
 
+// options.ownership (hooks/install.js getClaudeHookOwnership) narrows which
+// commands count as AgentHalo's. Only the store build's rules replace the
+// default: that build shares settings.json with other installs and must
+// neither report nor repair their entries.
+function storeOwnership(options) {
+  const ownership = options && options.ownership;
+  return ownership && ownership.store === true ? ownership : null;
+}
+
 function normalizePathForComparison(value, platform) {
   const text = String(value || "");
   return platform === "win32" ? text.replace(/\\/g, "/").toLowerCase() : text;
@@ -75,27 +84,29 @@ function scriptPathMatchesExpected(actual, expected, platform) {
   return normalizePathForComparison(actual, platform) === normalizePathForComparison(expected, platform);
 }
 
+// `marker` is a substring, or a predicate over the command.
 function findMarkerCommandsForEvent(hooks, eventName, marker) {
   const entries = hooks[eventName];
   if (!Array.isArray(entries)) return [];
+  const matches = typeof marker === "function" ? marker : (command) => commandMatchesMarker(command, marker);
   const commands = [];
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
     if (Array.isArray(entry.hooks)) {
       for (const hook of entry.hooks) {
-        if (hook && typeof hook.command === "string" && commandMatchesMarker(hook.command, marker)) {
+        if (hook && typeof hook.command === "string" && matches(hook.command)) {
           commands.push(hook.command);
         }
       }
     }
-    if (typeof entry.command === "string" && commandMatchesMarker(entry.command, marker)) {
+    if (typeof entry.command === "string" && matches(entry.command)) {
       commands.push(entry.command);
     }
   }
   return commands;
 }
 
-function findManagedStateCommandRecords(settings, eventName) {
+function findManagedStateCommandRecords(settings, eventName, ownership = null) {
   const hooks = settings && settings.hooks;
   const entries = hooks && hooks[eventName];
   if (!Array.isArray(entries)) return { managed: [], unverified: [] };
@@ -104,6 +115,12 @@ function findManagedStateCommandRecords(settings, eventName) {
 
   const collect = (hook, entryIndex, hookIndex) => {
     if (!hook || typeof hook.command !== "string") return;
+    if (ownership) {
+      if (ownership.stateHookKind(hook.command, settings, eventName) !== null) {
+        managed.push({ command: hook.command, entryIndex, hookIndex, kind: "literal", mutationOwned: true });
+      }
+      return;
+    }
     // Health historically recognizes AgentHalo commands inside PowerShell
     // EncodedCommand wrappers. Keep that read-only visibility without
     // broadening the installer's raw-marker mutation ownership boundary.
@@ -237,6 +254,7 @@ function inspectEventCommands(commands, event, marker, expectedScriptPath, valid
  * @param {string} [options.expectedAutoStartScriptPath]
  * @param {boolean} [options.requireAutoStart]
  * @param {string[]} [options.coreEvents]
+ * @param {object} [options.ownership] - hooks/install.js getClaudeHookOwnership()
  * @param {string} [options.platform]
  * @param {object} [options.fs] — injected fs (existsSync at minimum)
  */
@@ -244,6 +262,7 @@ function inspectClaudeHookHealth(rawSettings, options = {}) {
   const platform = options.platform || process.platform;
   const fsImpl = options.fs;
   const coreEvents = Array.isArray(options.coreEvents) ? options.coreEvents : [];
+  const ownership = storeOwnership(options);
   const expectedPermissionUrl = options.expectedPermissionUrl || null;
   const expectedHookScriptPath = options.expectedHookScriptPath || null;
   const expectedAutoStartScriptPath = options.expectedAutoStartScriptPath || null;
@@ -320,10 +339,10 @@ function inspectClaudeHookHealth(rawSettings, options = {}) {
   let managedCoreEventCount = 0;
   const missingEvents = [];
   let hasUnverifiedEnvIndirection = false;
-  const usableEnvNodeCandidate = findUsableEnvNodeCandidate(parsed, validateOptions);
+  const usableEnvNodeCandidate = ownership ? null : findUsableEnvNodeCandidate(parsed, validateOptions);
 
   for (const event of coreEvents) {
-    const records = findManagedStateCommandRecords(parsed, event);
+    const records = findManagedStateCommandRecords(parsed, event, ownership);
     commandCount += records.managed.length;
     for (const record of records.unverified) {
       hasUnverifiedEnvIndirection = true;
@@ -387,7 +406,11 @@ function inspectClaudeHookHealth(rawSettings, options = {}) {
   }
 
   if (requireAutoStart) {
-    const autoStartCommands = findMarkerCommandsForEvent(hooks, "SessionStart", AUTO_START_MARKER);
+    const autoStartCommands = findMarkerCommandsForEvent(
+      hooks,
+      "SessionStart",
+      ownership ? ownership.isAutoStartCommand : AUTO_START_MARKER
+    );
     if (!autoStartCommands.length) {
       pushIssue(issues, {
         code: "auto-start-path-missing",

@@ -8,12 +8,12 @@ const crypto = require("crypto");
 const {
   DEFAULT_SERVER_PORT,
   defaultRuntimeConfigPath,
-  buildPermissionUrl,
   clearRuntimeConfig,
   getPortCandidates,
   readRuntimeIdentity,
   readRuntimePort,
   ROUTING_NONCE_HEADER,
+  STORE_PERMISSION_PATH,
   writeRuntimeConfig,
 } = require("../hooks/server-config");
 const { processAlive } = require("../hooks/shared-process");
@@ -26,6 +26,8 @@ const {
 const {
   getClaudeHookScriptPath,
   getClaudeAutoStartScriptPath,
+  getClaudeHookOwnership,
+  getClaudePermissionUrl,
   CLAUDE_CORE_HOOK_EVENTS,
   resolveClaudeSettingsPath,
 } = require("../hooks/install");
@@ -385,7 +387,8 @@ function buildClaudeHookReportForVerify(overrides = {}) {
     : !!ctx.autoStartWithClaude;
   const home = overrides.homeDir ? { homeDir: overrides.homeDir } : claudeHomeOptions();
   return inspectClaudeHookHealth(readClaudeSettingsRawForVerify(home), {
-    expectedPermissionUrl: buildPermissionUrl(getHookServerPort()),
+    expectedPermissionUrl: getClaudePermissionUrl(getHookServerPort()),
+    ownership: getClaudeHookOwnership(),
     expectedHookScriptPath: claudeExpectedHookScriptPath,
     expectedAutoStartScriptPath: claudeExpectedAutoStartScriptPath,
     requireAutoStart,
@@ -850,7 +853,7 @@ function routeHttpRequest(req, res, remoteProfile = null) {
         remoteProfile,
         isClaudeStatuslineMetadataAllowed,
       });
-    } else if (req.method === "POST" && req.url === "/permission") {
+    } else if (req.method === "POST" && (req.url === "/permission" || req.url === STORE_PERMISSION_PATH)) {
       handlePermissionPost(req, res, {
         ctx,
         createRequestHookRecorder,

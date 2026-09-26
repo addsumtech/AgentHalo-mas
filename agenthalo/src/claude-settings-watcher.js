@@ -3,11 +3,12 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { buildPermissionUrl } = require("../hooks/server-config");
 const { classifyManagedClaudeStateHookCommand } = require("../hooks/json-utils");
 const {
   getClaudeHookScriptPath,
   getClaudeAutoStartScriptPath,
+  getClaudeHookOwnership,
+  getClaudePermissionUrl,
   CLAUDE_CORE_HOOK_EVENTS,
 } = require("../hooks/install");
 const {
@@ -98,12 +99,18 @@ function commandContainsAnyMarker(command, markers) {
 function countCommandHooksInEntries(entries, options = {}) {
   if (!Array.isArray(entries)) return 0;
   const excludeMarkers = Array.isArray(options.excludeMarkers) ? options.excludeMarkers : null;
-  const isExcluded = (command) => commandContainsAnyMarker(command, excludeMarkers)
-    || (
-      options.settings
-      && typeof options.event === "string"
-      && classifyManagedClaudeStateHookCommand(command, options.settings, options.event) !== null
-    );
+  const ownership = options.ownership && options.ownership.store === true ? options.ownership : null;
+  // The store build's own entries are the only managed ones there; another
+  // install's clawd-hook.js commands are third-party hooks to that build.
+  const isExcluded = ownership
+    ? (command) => ownership.stateHookKind(command, options.settings, options.event) !== null
+      || ownership.isAutoStartCommand(command)
+    : (command) => commandContainsAnyMarker(command, excludeMarkers)
+      || (
+        options.settings
+        && typeof options.event === "string"
+        && classifyManagedClaudeStateHookCommand(command, options.settings, options.event) !== null
+      );
   let count = 0;
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
@@ -136,17 +143,18 @@ function countAllHooks(hooks, options = {}) {
   return total;
 }
 
-function countThirdPartyHooks(hooks, settings) {
-  return countAllHooks(hooks, { excludeMarkers: MANAGED_COMMAND_MARKERS, settings });
+function countThirdPartyHooks(hooks, settings, ownership = null) {
+  return countAllHooks(hooks, { excludeMarkers: MANAGED_COMMAND_MARKERS, settings, ownership });
 }
 
 /**
  * Capture a snapshot of top-level key count and command hook counts from settings.json text.
  * Returns null when the payload is not a parseable JSON object so callers can skip comparisons.
  * @param {string} raw
+ * @param {{ownership?: object}} [options] - hooks/install.js getClaudeHookOwnership()
  * @returns {{keyCount: number, hookCount: number, thirdPartyHookCount: number}|null}
  */
-function takeSnapshot(raw) {
+function takeSnapshot(raw, options = {}) {
   if (typeof raw !== "string" || !raw.trim()) return null;
   let parsed;
   try {
@@ -158,7 +166,7 @@ function takeSnapshot(raw) {
   return {
     keyCount: Object.keys(parsed).length,
     hookCount: countAllHooks(parsed.hooks),
-    thirdPartyHookCount: countThirdPartyHooks(parsed.hooks, parsed),
+    thirdPartyHookCount: countThirdPartyHooks(parsed.hooks, parsed, options.ownership || null),
   };
 }
 
@@ -230,12 +238,16 @@ function createClaudeSettingsWatcher(ctx = {}) {
   const maxRepairAttempts = Number.isInteger(ctx.maxRepairAttempts) && ctx.maxRepairAttempts > 0
     ? ctx.maxRepairAttempts
     : DEFAULT_MAX_REPAIR_ATTEMPTS;
+  // ctx.storeHooks overrides the build check (tests); see hooks/install.js
+  // "Mac App Store build" for what the store build owns in settings.json.
+  const installOptions = typeof ctx.storeHooks === "boolean" ? { storeHooks: ctx.storeHooks } : {};
+  const ownership = getClaudeHookOwnership(installOptions);
   const expectedHookScriptPath = typeof ctx.expectedHookScriptPath === "string"
     ? ctx.expectedHookScriptPath
-    : getClaudeHookScriptPath();
+    : getClaudeHookScriptPath(installOptions);
   const expectedAutoStartScriptPath = typeof ctx.expectedAutoStartScriptPath === "string"
     ? ctx.expectedAutoStartScriptPath
-    : getClaudeAutoStartScriptPath();
+    : getClaudeAutoStartScriptPath(installOptions);
   const coreEvents = Array.isArray(ctx.coreEvents) ? ctx.coreEvents : CLAUDE_CORE_HOOK_EVENTS;
   const platform = ctx.platform || process.platform;
 
@@ -311,10 +323,15 @@ function createClaudeSettingsWatcher(ctx = {}) {
     }
   }
 
+  function snapshotOf(raw) {
+    return takeSnapshot(raw, { ownership });
+  }
+
   function buildReport(raw) {
     const port = typeof ctx.getHookServerPort === "function" ? ctx.getHookServerPort() : null;
     return inspectClaudeHookHealth(raw, {
-      expectedPermissionUrl: buildPermissionUrl(port),
+      expectedPermissionUrl: getClaudePermissionUrl(port, installOptions),
+      ownership,
       expectedHookScriptPath,
       expectedAutoStartScriptPath,
       requireAutoStart: !!ctx.autoStartWithClaude,
@@ -332,7 +349,7 @@ function createClaudeSettingsWatcher(ctx = {}) {
   // migration that should repair them.
   function updateTrustedSnapshot(raw, report) {
     if (getClaudeHookDegradedDiagnostic(report)) return false;
-    const snapshot = takeSnapshot(raw);
+    const snapshot = snapshotOf(raw);
     if (!snapshot) return false;
     lastTrustedSnapshot = snapshot;
     return true;
@@ -441,7 +458,7 @@ function createClaudeSettingsWatcher(ctx = {}) {
       return;
     }
 
-    const currentSnapshot = takeSnapshot(raw);
+    const currentSnapshot = snapshotOf(raw);
     if (isSuspiciousShrink(lastTrustedSnapshot, currentSnapshot, suspiciousShrinkRatio, suspiciousKeyLossThreshold)) {
       // Notify once per persisting shrink, not every periodic cycle — the
       // condition can stay guarded for many ticks while waiting on an

@@ -8,9 +8,15 @@
 # so the tool keeps working without AgentHalo updates.
 
 # Tells the hook it runs for the store build (see applySourceBundleId in
-# shared-process.js).
-AGENTHALO_STORE_HOOK=1
-export AGENTHALO_STORE_HOOK
+# shared-process.js). Only for a script bundled next to this launcher: another
+# AgentHalo install may have taken this launcher for its Node path, and its
+# own hooks must keep behaving as that install's hooks.
+case "$1" in
+  "${0%/*}"/*)
+    AGENTHALO_STORE_HOOK=1
+    export AGENTHALO_STORE_HOOK
+    ;;
+esac
 
 run_node() {
   if [ -n "$1" ] && [ -x "$1" ]; then

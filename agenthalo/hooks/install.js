@@ -9,8 +9,11 @@ const os = require("os");
 const childProcess = require("child_process");
 const {
   buildPermissionUrl,
+  buildStorePermissionUrl,
   DEFAULT_SERVER_PORT,
+  getBundledNodeLauncherPath,
   isManagedPermissionUrl,
+  isStorePermissionUrl,
   PERMISSION_PATH,
   readRuntimePort,
   readRemoteIdentity,
@@ -487,21 +490,118 @@ async function getClaudeVersionAsync(options = {}) {
 const MARKER = "clawd-hook.js";
 const AUTO_START_MARKER = "auto-start.js";
 const LEGACY_AUTO_START_MARKER = "auto-start.sh";
+const STATUSLINE_MARKER = "claude-statusline.js";
 const HTTP_MARKER = PERMISSION_PATH;
 const STATE_HOOK_TIMEOUT_SECONDS = 5;
 const REMOTE_STATE_HOOK_TIMEOUT_SECONDS = Math.ceil(REMOTE_HOOK_HTTP_TIMEOUT_MS / 1000) + 5;
 const AUTO_START_HOOK_TIMEOUT_SECONDS = 15;
 
+// ── Mac App Store build ──
+// The store build can share settings.json with the original AgentHalo (bundle
+// com.agenthalo.desktop) or any other clawd install. Those claim every command
+// that mentions clawd-hook.js, auto-start.js or claude-statusline.js and every
+// http://127.0.0.1:<23333-23337>/permission URL, and rewrite them to their own
+// script path and port; two installs doing that to each other rewrite
+// settings.json for as long as both run. So the store build writes its
+// entries under names no other install matches, and only ever touches those:
+//
+//   "<hooks>/node-launcher.sh" "<hooks>/agenthalo-store-hook.js" <Event>
+//   "<hooks>/node-launcher.sh" "<hooks>/agenthalo-store-autostart.js"
+//   "<hooks>/node-launcher.sh" "<hooks>/agenthalo-store-statusline.js" (statusLine)
+//   http://127.0.0.1:<port>/agenthalo-store/approval (PermissionRequest)
+//
+// The script names are the ownership markers, so the entries stay ours when
+// the app moves or updates. Entries an earlier store build wrote (the launcher
+// running the shared script) count as ours only while that script sits in
+// this app's own hooks folder.
+const STORE_HOOK_SCRIPT = "agenthalo-store-hook.js";
+const STORE_AUTO_START_SCRIPT = "agenthalo-store-autostart.js";
+const STORE_STATUSLINE_SCRIPT = "agenthalo-store-statusline.js";
+const STORE_NODE_LAUNCHER = "node-launcher.sh";
+
+// options.storeHooks overrides the build check (tests, and callers that
+// compare both installs). Remote installs never run the store build.
+function isStoreClaudeInstall(options = {}) {
+  if (options.remote === true) return false;
+  if (typeof options.storeHooks === "boolean") return options.storeHooks;
+  return process.mas === true;
+}
+
+function hookSourcePath(name) {
+  return asarUnpackedPath(path.resolve(__dirname, name).replace(/\\/g, "/"));
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// storeScript as a whole path segment, so a longer name that merely ends with
+// it is not ours.
+function commandNamesScript(command, script) {
+  return new RegExp(`(^|[\\\\/"'\\s])${escapeRegExp(script)}(["'\\s]|$)`).test(command);
+}
+
+function isStoreOwnedCommand(command, storeScript, legacyScript) {
+  if (typeof command !== "string") return false;
+  if (commandNamesScript(command, storeScript)) return true;
+  const legacy = `"${hookSourcePath(STORE_NODE_LAUNCHER)}" "${hookSourcePath(legacyScript)}"`;
+  const trimmed = command.trim();
+  return trimmed === legacy || trimmed.startsWith(`${legacy} `);
+}
+
+// Which settings.json entries an install treats as its own. The default is
+// what every clawd install has always matched; the store build matches only
+// its own names (see above).
+const CLAWD_CLAUDE_OWNERSHIP = Object.freeze({
+  store: false,
+  stateHookKind: (command, settings, event) => classifyManagedClaudeStateHookCommand(command, settings, event),
+  isAutoStartCommand: (command) => typeof command === "string" && command.includes(AUTO_START_MARKER),
+  isLegacyAutoStartCommand: (command) => typeof command === "string" && command.includes(LEGACY_AUTO_START_MARKER),
+  isStatuslineCommand: (command) => typeof command === "string" && command.includes(STATUSLINE_MARKER),
+  isPermissionUrl: (url) => isManagedPermissionUrl(url),
+});
+
+const STORE_CLAUDE_OWNERSHIP = Object.freeze({
+  store: true,
+  stateHookKind: (command) => (isStoreOwnedCommand(command, STORE_HOOK_SCRIPT, MARKER) ? "literal" : null),
+  isAutoStartCommand: (command) => isStoreOwnedCommand(command, STORE_AUTO_START_SCRIPT, AUTO_START_MARKER),
+  isLegacyAutoStartCommand: () => false,
+  isStatuslineCommand: (command) => isStoreOwnedCommand(command, STORE_STATUSLINE_SCRIPT, STATUSLINE_MARKER),
+  isPermissionUrl: (url) => isStorePermissionUrl(url),
+});
+
+function getClaudeHookOwnership(options = {}) {
+  return isStoreClaudeInstall(options) ? STORE_CLAUDE_OWNERSHIP : CLAWD_CLAUDE_OWNERSHIP;
+}
+
+// The PermissionRequest URL this install writes for a local server port.
+function getClaudePermissionUrl(port, options = {}) {
+  return isStoreClaudeInstall(options) ? buildStorePermissionUrl(port) : buildPermissionUrl(port);
+}
+
 // Authoritative script paths — the single source of truth for both what
 // registerHooks()/registerHooksAsync() write and what runtime health checks
 // (src/claude-hook-health.js) compare against. Computing this in two places
 // would let the installer and the health inspector silently drift apart.
-function getClaudeHookScriptPath() {
-  return asarUnpackedPath(path.resolve(__dirname, "clawd-hook.js").replace(/\\/g, "/"));
+function getClaudeHookScriptPath(options = {}) {
+  return hookSourcePath(isStoreClaudeInstall(options) ? STORE_HOOK_SCRIPT : "clawd-hook.js");
 }
 
-function getClaudeAutoStartScriptPath() {
-  return asarUnpackedPath(path.resolve(__dirname, "auto-start.js").replace(/\\/g, "/"));
+function getClaudeAutoStartScriptPath(options = {}) {
+  return hookSourcePath(isStoreClaudeInstall(options) ? STORE_AUTO_START_SCRIPT : "auto-start.js");
+}
+
+function getClaudeStatuslineScriptPath(options = {}) {
+  return hookSourcePath(isStoreClaudeInstall(options) ? STORE_STATUSLINE_SCRIPT : "claude-statusline.js");
+}
+
+// The store build always runs its hooks through the bundled launcher: the
+// sandboxed app cannot see the user's Node, and a Node path taken from another
+// install's commands would run store hooks without their store environment.
+function storeNodeResolution(options = {}) {
+  return configuredNodeResolution(
+    typeof options.nodeBin === "string" && options.nodeBin ? options.nodeBin : getBundledNodeLauncherPath()
+  );
 }
 
 function buildCommandHookSpec(nodeBin, scriptPath, args = "", options = {}) {
@@ -637,7 +737,9 @@ function forEachCommandHook(entries, visitor) {
   }
 }
 
+// `marker` is a substring, or a predicate over the command (ownership rules).
 function syncCommandHook(entries, marker, expectedHook) {
+  const matches = typeof marker === "function" ? marker : (command) => command.includes(marker);
   let found = false;
   let changed = false;
   const syncField = (hook, field) => {
@@ -655,7 +757,7 @@ function syncCommandHook(entries, marker, expectedHook) {
   };
 
   forEachCommandHook(entries, (hook) => {
-    if (!hook.command.includes(marker)) return;
+    if (!matches(hook.command)) return;
     found = true;
     syncField(hook, "type");
     if (hook.command !== expectedHook.command) {
@@ -700,21 +802,21 @@ function syncCommandHookFields(hook, expectedHook) {
   return changed;
 }
 
-function collectManagedStateHookRecords(entries, settings, event) {
+function collectManagedStateHookRecords(entries, settings, event, ownership = CLAWD_CLAUDE_OWNERSHIP) {
   if (!Array.isArray(entries)) return [];
   const records = [];
   for (let entryIndex = 0; entryIndex < entries.length; entryIndex++) {
     const entry = entries[entryIndex];
     if (!entry || typeof entry !== "object") continue;
     if (typeof entry.command === "string") {
-      const kind = classifyManagedClaudeStateHookCommand(entry.command, settings, event);
+      const kind = ownership.stateHookKind(entry.command, settings, event);
       if (kind) records.push({ entryIndex, hookIndex: null, hook: entry, kind });
     }
     if (!Array.isArray(entry.hooks)) continue;
     for (let hookIndex = 0; hookIndex < entry.hooks.length; hookIndex++) {
       const hook = entry.hooks[hookIndex];
       if (!hook || typeof hook !== "object" || typeof hook.command !== "string") continue;
-      const kind = classifyManagedClaudeStateHookCommand(hook.command, settings, event);
+      const kind = ownership.stateHookKind(hook.command, settings, event);
       if (kind) records.push({ entryIndex, hookIndex, hook, kind });
     }
   }
@@ -729,7 +831,7 @@ function stateHookRecordKey(record) {
 // aware: old syncCommandHook() can produce byte-identical duplicates, so a
 // command-string predicate cannot express "keep this one, remove the rest."
 function foldManagedStateHooks(entries, settings, event, expectedHook, options = {}) {
-  const records = collectManagedStateHookRecords(entries, settings, event);
+  const records = collectManagedStateHookRecords(entries, settings, event, options.ownership);
   if (records.length === 0) {
     return { entries, found: false, changed: false, updated: false, removed: 0 };
   }
@@ -808,12 +910,13 @@ function isClawdPermissionUrl(url) {
   return isManagedPermissionUrl(url);
 }
 
-function isClawdPermissionHook(entry) {
+function isClawdPermissionHook(entry, isUrl = isClawdPermissionUrl) {
+  const matches = typeof isUrl === "function" ? isUrl : isClawdPermissionUrl;
   return !!entry
     && typeof entry === "object"
     && entry.type === "http"
     && typeof entry.url === "string"
-    && isClawdPermissionUrl(entry.url);
+    && matches(entry.url);
 }
 
 function removeMatchingCommandHooks(entries, predicate) {
@@ -863,7 +966,8 @@ function removeMatchingCommandHooks(entries, predicate) {
   return { entries: nextEntries, removed, changed };
 }
 
-function removeMatchingHttpHooks(entries, predicate) {
+// isUrl narrows which HTTP hooks can be removed at all (ownership rules).
+function removeMatchingHttpHooks(entries, predicate, isUrl = isClawdPermissionUrl) {
   if (!Array.isArray(entries)) return { entries, removed: 0, changed: false };
 
   let removed = 0;
@@ -876,7 +980,7 @@ function removeMatchingHttpHooks(entries, predicate) {
       continue;
     }
 
-    if (isClawdPermissionHook(entry) && predicate(entry)) {
+    if (isClawdPermissionHook(entry, isUrl) && predicate(entry)) {
       removed++;
       changed = true;
       continue;
@@ -888,7 +992,7 @@ function removeMatchingHttpHooks(entries, predicate) {
     }
 
     const nextHooks = entry.hooks.filter((hook) => {
-      if (!isClawdPermissionHook(hook)) return true;
+      if (!isClawdPermissionHook(hook, isUrl)) return true;
       if (!predicate(hook)) return true;
       removed++;
       changed = true;
@@ -910,13 +1014,13 @@ function removeMatchingHttpHooks(entries, predicate) {
   return { entries: nextEntries, removed, changed };
 }
 
-function syncHttpHook(entries, expectedUrl) {
+function syncHttpHook(entries, expectedUrl, isUrl = isClawdPermissionUrl) {
   let found = false;
   let changed = false;
   if (!Array.isArray(entries)) return { found, changed };
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
-    if (isClawdPermissionHook(entry)) {
+    if (isClawdPermissionHook(entry, isUrl)) {
       found = true;
       if (entry.url !== expectedUrl) {
         entry.url = expectedUrl;
@@ -925,7 +1029,7 @@ function syncHttpHook(entries, expectedUrl) {
     }
     if (!Array.isArray(entry.hooks)) continue;
     for (const hook of entry.hooks) {
-      if (!isClawdPermissionHook(hook)) continue;
+      if (!isClawdPermissionHook(hook, isUrl)) continue;
       found = true;
       if (hook.url !== expectedUrl) {
         hook.url = expectedUrl;
@@ -934,6 +1038,34 @@ function syncHttpHook(entries, expectedUrl) {
     }
   }
   return { found, changed };
+}
+
+// Store build: an earlier store build wrote the shared
+// http://127.0.0.1:<port>/permission form, which any clawd install may own.
+// Remove one only when it cannot be another install's: it names the store
+// app's own port and settings.json holds no Claude state hook of another
+// install.
+function hasForeignClaudeStateHooks(settings) {
+  const hooks = settings && settings.hooks;
+  if (!hooks || typeof hooks !== "object") return false;
+  return Object.entries(hooks).some(([event, entries]) => {
+    let found = false;
+    forEachCommandHook(entries, (hook) => {
+      if (found) return;
+      found = CLAWD_CLAUDE_OWNERSHIP.stateHookKind(hook.command, settings, event) !== null
+        && STORE_CLAUDE_OWNERSHIP.stateHookKind(hook.command, settings, event) === null;
+    });
+    return found;
+  });
+}
+
+function removeLegacyStorePermissionHooks(settings, event, port) {
+  const entries = settings.hooks && settings.hooks[event];
+  if (!Array.isArray(entries) || !Number.isInteger(port) || hasForeignClaudeStateHooks(settings)) {
+    return { entries, removed: 0, changed: false };
+  }
+  const legacyUrl = buildPermissionUrl(port);
+  return removeMatchingHttpHooks(entries, (hook) => hook.url === legacyUrl);
 }
 
 function getHookServerPort(explicitPort) {
@@ -974,7 +1106,7 @@ function shouldReconcileVersionedHooks(versionInfo) {
   return versionInfo.status === "known";
 }
 
-function reconcileVersionedHooks(settings, supportedEvents, versionInfo) {
+function reconcileVersionedHooks(settings, supportedEvents, versionInfo, ownership = CLAWD_CLAUDE_OWNERSHIP) {
   let removed = 0;
   let changed = false;
   if (!shouldReconcileVersionedHooks(versionInfo)) {
@@ -992,7 +1124,7 @@ function reconcileVersionedHooks(settings, supportedEvents, versionInfo) {
 
     const result = removeMatchingCommandHooks(
       settings.hooks[event],
-      (command) => classifyManagedClaudeStateHookCommand(command, settings, event) !== null
+      (command) => ownership.stateHookKind(command, settings, event) !== null
     );
 
     if (!result.changed) continue;
@@ -1106,7 +1238,8 @@ function registerHooks(options = {}) {
   const remoteIdentity = requireRemoteInstallIdentity(options);
   const remotePermissionTransport = resolveRemotePermissionTransport(options);
   const hookPort = remoteIdentity ? remoteIdentity.remotePort : getHookServerPort(options.port);
-  const hookScript = getClaudeHookScriptPath();
+  const ownership = getClaudeHookOwnership(options);
+  const hookScript = getClaudeHookScriptPath(options);
   const platform = options.platform || process.platform;
   const wslDistro = resolveInstallWslDistro(options);
 
@@ -1128,7 +1261,9 @@ function registerHooks(options = {}) {
   // a minimal PATH that excludes Homebrew, nvm, volta, etc.
   // If detection fails (null), preserve the existing absolute path from settings
   // to avoid destructively overwriting a working config with bare "node".
-  const nodeResolution = resolveConfiguredNodeBinSync(options, settings);
+  const nodeResolution = ownership.store
+    ? storeNodeResolution(options)
+    : resolveConfiguredNodeBinSync(options, settings);
   const { nodeBin } = nodeResolution;
 
   let added = 0;
@@ -1145,7 +1280,7 @@ function registerHooks(options = {}) {
   const supportedVersionedEvents = new Set(supportedVersionedHooks.map((hook) => hook.event));
   versionSkipped = unsupportedVersionedHooks.length;
 
-  const reconcileResult = reconcileVersionedHooks(settings, supportedVersionedEvents, versionInfo);
+  const reconcileResult = reconcileVersionedHooks(settings, supportedVersionedEvents, versionInfo, ownership);
   removed += reconcileResult.removed;
   changed = changed || reconcileResult.changed;
 
@@ -1155,7 +1290,7 @@ function registerHooks(options = {}) {
     if (!Array.isArray(settings.hooks[event])) continue;
     const result = removeMatchingCommandHooks(
       settings.hooks[event],
-      (command) => classifyManagedClaudeStateHookCommand(command, settings, event) !== null
+      (command) => ownership.stateHookKind(command, settings, event) !== null
     );
     if (!result.changed) continue;
     removed += result.removed;
@@ -1197,7 +1332,7 @@ function registerHooks(options = {}) {
       settings,
       event,
       desiredHook,
-      { canCanonicalizeEnv: nodeResolution.canCanonicalizeEnv }
+      { canCanonicalizeEnv: nodeResolution.canCanonicalizeEnv, ownership }
     );
     if (commandSync.found) {
       settings.hooks[event] = commandSync.entries;
@@ -1223,7 +1358,7 @@ function registerHooks(options = {}) {
 
   // Register auto-start hook for SessionStart (launches app if not running)
   if (options.autoStart) {
-    const autoStartScript = getClaudeAutoStartScriptPath();
+    const autoStartScript = getClaudeAutoStartScriptPath(options);
 
     if (!Array.isArray(settings.hooks.SessionStart)) {
       settings.hooks.SessionStart = [];
@@ -1236,7 +1371,7 @@ function registerHooks(options = {}) {
       async: true,
       timeout: AUTO_START_HOOK_TIMEOUT_SECONDS,
     });
-    const autoStartSync = syncCommandHook(settings.hooks.SessionStart, AUTO_START_MARKER, autoStartHook);
+    const autoStartSync = syncCommandHook(settings.hooks.SessionStart, ownership.isAutoStartCommand, autoStartHook);
     if (!autoStartSync.found) {
       // Keep auto-start visible before the state hook in settings. Claude Code
       // runs matching hooks in parallel, so correctness must not depend on order.
@@ -1256,9 +1391,9 @@ function registerHooks(options = {}) {
     const beforeLen = settings.hooks.SessionStart.length;
     settings.hooks.SessionStart = settings.hooks.SessionStart.filter((entry) => {
       if (!entry || typeof entry !== "object") return true;
-      if (typeof entry.command === "string" && entry.command.includes(LEGACY_AUTO_START_MARKER)) return false;
+      if (typeof entry.command === "string" && ownership.isLegacyAutoStartCommand(entry.command)) return false;
       if (Array.isArray(entry.hooks)) {
-        if (entry.hooks.some((h) => h && typeof h.command === "string" && h.command.includes(LEGACY_AUTO_START_MARKER))) return false;
+        if (entry.hooks.some((h) => h && typeof h.command === "string" && ownership.isLegacyAutoStartCommand(h.command))) return false;
       }
       return true;
     });
@@ -1272,7 +1407,7 @@ function registerHooks(options = {}) {
     if (!Array.isArray(settings.hooks[event])) continue;
     const result = removeMatchingCommandHooks(
       settings.hooks[event],
-      (command) => classifyManagedClaudeStateHookCommand(command, settings, event) !== null
+      (command) => ownership.stateHookKind(command, settings, event) !== null
     );
     if (result.changed) {
       settings.hooks[event] = result.entries;
@@ -1302,13 +1437,23 @@ function registerHooks(options = {}) {
 
     const desiredHook = {
       ...hook,
-      url: buildPermissionUrl(
-        hookPort,
-        remoteIdentity && remoteIdentity.routingNonce,
-        remotePermissionTransport,
-      ),
+      url: ownership.store
+        ? buildStorePermissionUrl(hookPort)
+        : buildPermissionUrl(
+          hookPort,
+          remoteIdentity && remoteIdentity.routingNonce,
+          remotePermissionTransport,
+        ),
     };
-    const httpSync = syncHttpHook(settings.hooks[event], desiredHook.url);
+    if (ownership.store) {
+      const legacy = removeLegacyStorePermissionHooks(settings, event, hookPort);
+      if (legacy.changed) {
+        settings.hooks[event] = legacy.entries;
+        removed += legacy.removed;
+        changed = true;
+      }
+    }
+    const httpSync = syncHttpHook(settings.hooks[event], desiredHook.url, ownership.isPermissionUrl);
     if (httpSync.found) {
       if (httpSync.changed) {
         updated++;
@@ -1433,7 +1578,8 @@ async function registerHooksAsync(options = {}) {
   const remoteIdentity = requireRemoteInstallIdentity(options);
   const remotePermissionTransport = resolveRemotePermissionTransport(options);
   const hookPort = remoteIdentity ? remoteIdentity.remotePort : getHookServerPort(options.port);
-  const hookScript = getClaudeHookScriptPath();
+  const ownership = getClaudeHookOwnership(options);
+  const hookScript = getClaudeHookScriptPath(options);
   const platform = options.platform || process.platform;
   const wslDistro = resolveInstallWslDistro(options);
 
@@ -1450,7 +1596,9 @@ async function registerHooksAsync(options = {}) {
 
   if (!settings.hooks) settings.hooks = {};
 
-  const nodeResolution = await resolveConfiguredNodeBinAsync(options, settings);
+  const nodeResolution = ownership.store
+    ? storeNodeResolution(options)
+    : await resolveConfiguredNodeBinAsync(options, settings);
   const { nodeBin } = nodeResolution;
 
   let added = 0;
@@ -1466,7 +1614,7 @@ async function registerHooksAsync(options = {}) {
   const supportedVersionedEvents = new Set(supportedVersionedHooks.map((hook) => hook.event));
   versionSkipped = unsupportedVersionedHooks.length;
 
-  const reconcileResult = reconcileVersionedHooks(settings, supportedVersionedEvents, versionInfo);
+  const reconcileResult = reconcileVersionedHooks(settings, supportedVersionedEvents, versionInfo, ownership);
   removed += reconcileResult.removed;
   changed = changed || reconcileResult.changed;
 
@@ -1474,7 +1622,7 @@ async function registerHooksAsync(options = {}) {
     if (!Array.isArray(settings.hooks[event])) continue;
     const result = removeMatchingCommandHooks(
       settings.hooks[event],
-      (command) => classifyManagedClaudeStateHookCommand(command, settings, event) !== null
+      (command) => ownership.stateHookKind(command, settings, event) !== null
     );
     if (!result.changed) continue;
     removed += result.removed;
@@ -1511,7 +1659,7 @@ async function registerHooksAsync(options = {}) {
       settings,
       event,
       desiredHook,
-      { canCanonicalizeEnv: nodeResolution.canCanonicalizeEnv }
+      { canCanonicalizeEnv: nodeResolution.canCanonicalizeEnv, ownership }
     );
     if (commandSync.found) {
       settings.hooks[event] = commandSync.entries;
@@ -1535,7 +1683,7 @@ async function registerHooksAsync(options = {}) {
   }
 
   if (options.autoStart) {
-    const autoStartScript = getClaudeAutoStartScriptPath();
+    const autoStartScript = getClaudeAutoStartScriptPath(options);
 
     if (!Array.isArray(settings.hooks.SessionStart)) {
       settings.hooks.SessionStart = [];
@@ -1548,7 +1696,7 @@ async function registerHooksAsync(options = {}) {
       async: true,
       timeout: AUTO_START_HOOK_TIMEOUT_SECONDS,
     });
-    const autoStartSync = syncCommandHook(settings.hooks.SessionStart, AUTO_START_MARKER, autoStartHook);
+    const autoStartSync = syncCommandHook(settings.hooks.SessionStart, ownership.isAutoStartCommand, autoStartHook);
     if (!autoStartSync.found) {
       settings.hooks.SessionStart.unshift({
         matcher: "",
@@ -1565,9 +1713,9 @@ async function registerHooksAsync(options = {}) {
     const beforeLen = settings.hooks.SessionStart.length;
     settings.hooks.SessionStart = settings.hooks.SessionStart.filter((entry) => {
       if (!entry || typeof entry !== "object") return true;
-      if (typeof entry.command === "string" && entry.command.includes(LEGACY_AUTO_START_MARKER)) return false;
+      if (typeof entry.command === "string" && ownership.isLegacyAutoStartCommand(entry.command)) return false;
       if (Array.isArray(entry.hooks)) {
-        if (entry.hooks.some((h) => h && typeof h.command === "string" && h.command.includes(LEGACY_AUTO_START_MARKER))) return false;
+        if (entry.hooks.some((h) => h && typeof h.command === "string" && ownership.isLegacyAutoStartCommand(h.command))) return false;
       }
       return true;
     });
@@ -1578,7 +1726,7 @@ async function registerHooksAsync(options = {}) {
     if (!Array.isArray(settings.hooks[event])) continue;
     const result = removeMatchingCommandHooks(
       settings.hooks[event],
-      (command) => classifyManagedClaudeStateHookCommand(command, settings, event) !== null
+      (command) => ownership.stateHookKind(command, settings, event) !== null
     );
     if (result.changed) {
       settings.hooks[event] = result.entries;
@@ -1607,13 +1755,23 @@ async function registerHooksAsync(options = {}) {
 
     const desiredHook = {
       ...hook,
-      url: buildPermissionUrl(
-        hookPort,
-        remoteIdentity && remoteIdentity.routingNonce,
-        remotePermissionTransport,
-      ),
+      url: ownership.store
+        ? buildStorePermissionUrl(hookPort)
+        : buildPermissionUrl(
+          hookPort,
+          remoteIdentity && remoteIdentity.routingNonce,
+          remotePermissionTransport,
+        ),
     };
-    const httpSync = syncHttpHook(settings.hooks[event], desiredHook.url);
+    if (ownership.store) {
+      const legacy = removeLegacyStorePermissionHooks(settings, event, hookPort);
+      if (legacy.changed) {
+        settings.hooks[event] = legacy.entries;
+        removed += legacy.removed;
+        changed = true;
+      }
+    }
+    const httpSync = syncHttpHook(settings.hooks[event], desiredHook.url, ownership.isPermissionUrl);
     if (httpSync.found) {
       if (httpSync.changed) {
         updated++;
@@ -1701,6 +1859,7 @@ function unregisterHooks(options = {}) {
     return { removed: 0, changed: false };
   }
 
+  const ownership = getClaudeHookOwnership(options);
   let removed = 0;
   let changed = false;
   for (const [event, entries] of Object.entries(settings.hooks)) {
@@ -1708,14 +1867,29 @@ function unregisterHooks(options = {}) {
 
     const commandResult = removeMatchingCommandHooks(
       entries,
-      (command) => classifyManagedClaudeStateHookCommand(command, settings, event) !== null
-        || command.includes(AUTO_START_MARKER)
-        || command.includes(LEGACY_AUTO_START_MARKER)
+      (command) => ownership.stateHookKind(command, settings, event) !== null
+        || ownership.isAutoStartCommand(command)
+        || ownership.isLegacyAutoStartCommand(command)
     );
-    const httpResult = removeMatchingHttpHooks(
+    let httpResult = removeMatchingHttpHooks(
       commandResult.entries,
-      (hook) => isClawdPermissionHook(hook)
+      (hook) => isClawdPermissionHook(hook, ownership.isPermissionUrl),
+      ownership.isPermissionUrl
     );
+    if (ownership.store) {
+      const legacy = removeLegacyStorePermissionHooks(
+        { ...settings, hooks: { ...settings.hooks, [event]: httpResult.entries } },
+        event,
+        getHookServerPort(options.port)
+      );
+      if (legacy.changed) {
+        httpResult = {
+          entries: legacy.entries,
+          removed: httpResult.removed + legacy.removed,
+          changed: true,
+        };
+      }
+    }
 
     if (!commandResult.changed && !httpResult.changed) continue;
 
@@ -1750,6 +1924,7 @@ async function unregisterHooksAsync(options = {}) {
     return { removed: 0, changed: false };
   }
 
+  const ownership = getClaudeHookOwnership(options);
   let removed = 0;
   let changed = false;
   for (const [event, entries] of Object.entries(settings.hooks)) {
@@ -1757,14 +1932,29 @@ async function unregisterHooksAsync(options = {}) {
 
     const commandResult = removeMatchingCommandHooks(
       entries,
-      (command) => classifyManagedClaudeStateHookCommand(command, settings, event) !== null
-        || command.includes(AUTO_START_MARKER)
-        || command.includes(LEGACY_AUTO_START_MARKER)
+      (command) => ownership.stateHookKind(command, settings, event) !== null
+        || ownership.isAutoStartCommand(command)
+        || ownership.isLegacyAutoStartCommand(command)
     );
-    const httpResult = removeMatchingHttpHooks(
+    let httpResult = removeMatchingHttpHooks(
       commandResult.entries,
-      (hook) => isClawdPermissionHook(hook)
+      (hook) => isClawdPermissionHook(hook, ownership.isPermissionUrl),
+      ownership.isPermissionUrl
     );
+    if (ownership.store) {
+      const legacy = removeLegacyStorePermissionHooks(
+        { ...settings, hooks: { ...settings.hooks, [event]: httpResult.entries } },
+        event,
+        getHookServerPort(options.port)
+      );
+      if (legacy.changed) {
+        httpResult = {
+          entries: legacy.entries,
+          removed: httpResult.removed + legacy.removed,
+          changed: true,
+        };
+      }
+    }
 
     if (!commandResult.changed && !httpResult.changed) continue;
 
@@ -1802,18 +1992,19 @@ function unregisterAutoStart(options = {}) {
   const arr = settings.hooks && settings.hooks.SessionStart;
   if (!Array.isArray(arr)) return false;
 
+  const ownership = getClaudeHookOwnership(options);
   const before = arr.length;
   settings.hooks.SessionStart = arr.filter((entry) => {
     if (!entry || typeof entry !== "object") return true;
     // Remove auto-start.js entries
-    if (typeof entry.command === "string" && entry.command.includes(AUTO_START_MARKER)) return false;
+    if (typeof entry.command === "string" && ownership.isAutoStartCommand(entry.command)) return false;
     if (Array.isArray(entry.hooks)) {
-      if (entry.hooks.some((h) => h && typeof h.command === "string" && h.command.includes(AUTO_START_MARKER))) return false;
+      if (entry.hooks.some((h) => h && typeof h.command === "string" && ownership.isAutoStartCommand(h.command))) return false;
     }
     // Remove legacy auto-start.sh entries
-    if (typeof entry.command === "string" && entry.command.includes(LEGACY_AUTO_START_MARKER)) return false;
+    if (typeof entry.command === "string" && ownership.isLegacyAutoStartCommand(entry.command)) return false;
     if (Array.isArray(entry.hooks)) {
-      if (entry.hooks.some((h) => h && typeof h.command === "string" && h.command.includes(LEGACY_AUTO_START_MARKER))) return false;
+      if (entry.hooks.some((h) => h && typeof h.command === "string" && ownership.isLegacyAutoStartCommand(h.command))) return false;
     }
     return true;
   });
@@ -1835,11 +2026,12 @@ function isAutoStartRegistered(options = {}) {
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
     const arr = settings.hooks && settings.hooks.SessionStart;
     if (!Array.isArray(arr)) return false;
+    const ownership = getClaudeHookOwnership(options);
     return arr.some((entry) => {
       if (!entry || typeof entry !== "object") return false;
-      if (typeof entry.command === "string" && entry.command.includes(AUTO_START_MARKER)) return true;
+      if (typeof entry.command === "string" && ownership.isAutoStartCommand(entry.command)) return true;
       if (Array.isArray(entry.hooks)) {
-        return entry.hooks.some((h) => h && typeof h.command === "string" && h.command.includes(AUTO_START_MARKER));
+        return entry.hooks.some((h) => h && typeof h.command === "string" && ownership.isAutoStartCommand(h.command));
       }
       return false;
     });
@@ -1848,7 +2040,6 @@ function isAutoStartRegistered(options = {}) {
   }
 }
 
-const STATUSLINE_MARKER = "claude-statusline.js";
 const STATUSLINE_CHAIN_FLAG = "--chain";
 
 function hasClaudeSettingsDir(homeDir, options = {}) {
@@ -1903,8 +2094,9 @@ function registerClaudeStatusline(options = {}) {
   }
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) settings = {};
 
+  const ownership = getClaudeHookOwnership(options);
   const existing = settings.statusLine && typeof settings.statusLine === "object" ? settings.statusLine : null;
-  const existingIsOurs = !!(existing && typeof existing.command === "string" && existing.command.includes(STATUSLINE_MARKER));
+  const existingIsOurs = !!(existing && ownership.isStatuslineCommand(existing.command));
 
   // Chain opt-in is remote-only in v1: the remote deploy path guarantees a
   // POSIX shell, while a local Windows chain would need a cross-shell
@@ -1955,8 +2147,10 @@ function registerClaudeStatusline(options = {}) {
     chainActive = !chainExplicitlyDisabled && !!chainedOriginal;
   }
 
-  const scriptPath = asarUnpackedPath(path.resolve(__dirname, "claude-statusline.js").replace(/\\/g, "/"));
-  const nodeBin = (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin()) || "node";
+  const scriptPath = getClaudeStatuslineScriptPath(options);
+  const nodeBin = ownership.store
+    ? storeNodeResolution(options).nodeBin
+    : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin()) || "node";
   const platform = options.platform || process.platform;
   // No `& "..."` here: statusLine has no shell field, and on Windows Claude
   // Code runs this through Git Bash when Git is installed - the PowerShell
@@ -2007,7 +2201,7 @@ function unregisterClaudeStatusline(options = {}) {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) settings = {};
 
   const existing = settings.statusLine && typeof settings.statusLine === "object" ? settings.statusLine : null;
-  const existingIsOurs = !!(existing && typeof existing.command === "string" && existing.command.includes(STATUSLINE_MARKER));
+  const existingIsOurs = !!(existing && getClaudeHookOwnership(options).isStatuslineCommand(existing.command));
 
   if (!existingIsOurs) {
     return { installed: !!existing, removed: 0, changed: false, settingsPath };
@@ -2051,9 +2245,16 @@ function parseClaudeInstallCliOptions(argv = []) {
 // Export for use by main.js
 module.exports = {
   STATUSLINE_MARKER,
+  STORE_HOOK_SCRIPT,
+  STORE_AUTO_START_SCRIPT,
+  STORE_STATUSLINE_SCRIPT,
   CLAUDE_CORE_HOOK_EVENTS: Object.freeze([...CORE_HOOKS]),
   getClaudeHookScriptPath,
   getClaudeAutoStartScriptPath,
+  getClaudeStatuslineScriptPath,
+  getClaudeHookOwnership,
+  getClaudePermissionUrl,
+  isStoreClaudeInstall,
   resolveClaudeHome,
   resolveClaudeSettingsPath,
   resolveClaudeHooksDir,
