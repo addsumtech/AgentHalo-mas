@@ -424,6 +424,13 @@ async function getClaudeVersionAsync(options = {}) {
   if (cachedClaudeVersionPromise) return cachedClaudeVersionPromise;
 
   const compute = async () => {
+    if (isStoreClaudeInstall(options)) {
+      // Unknown is not cached, so a later sync or health check asks again
+      // once Claude Code has written a transcript.
+      const storeInfo = await getClaudeVersionFromTranscriptsAsync(options);
+      if (storeInfo) cachedClaudeVersionInfo = storeInfo;
+      return storeInfo || { ...UNKNOWN_CLAUDE_VERSION };
+    }
     const platform = options.platform || process.platform;
     const platformPath = pathForPlatform(platform);
     const homeDir = options.homeDir || os.homedir();
@@ -485,6 +492,173 @@ async function getClaudeVersionAsync(options = {}) {
     cachedClaudeVersionPromise = null;
   });
   return cachedClaudeVersionPromise;
+}
+
+// ── Claude Code version for the store build ──
+// The sandboxed app can neither run `claude --version` nor read Claude Code's
+// install, but it can read the Claude folder the user authorized. Claude Code
+// stamps every transcript line (<claude home>/projects/<project>/<session>.jsonl)
+// with the version that wrote it, so the newest transcript's last lines name
+// the version in use. Reads stay bounded: at most MAX_CLAUDE_PROJECT_DIRS
+// project folders (newest first), MAX_CLAUDE_TRANSCRIPT_FILES files, and the
+// last CLAUDE_TRANSCRIPT_TAIL_BYTES of the newest MAX_CLAUDE_TRANSCRIPTS_READ.
+const CLAUDE_TRANSCRIPT_TAIL_BYTES = 256 * 1024;
+const MAX_CLAUDE_PROJECT_DIRS = 200;
+const MAX_CLAUDE_TRANSCRIPT_FILES = 2000;
+const MAX_CLAUDE_TRANSCRIPTS_READ = 5;
+
+function claudeProjectsDir(options = {}) {
+  return path.join(resolveClaudeHome(options), "projects");
+}
+
+// The version on the last complete line that carries one. A tail that does
+// not start at the beginning of the file begins mid-line; that line is skipped.
+function parseTranscriptTailVersion(text, startsMidLine) {
+  const lines = String(text || "").split("\n");
+  const first = startsMidLine ? 1 : 0;
+  for (let i = lines.length - 1; i >= first; i--) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const version = entry && typeof entry.version === "string" ? parseClaudeVersion(entry.version) : null;
+    if (version) return version;
+  }
+  return null;
+}
+
+function newestFirst(records, limit) {
+  return records.sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, limit);
+}
+
+function transcriptVersionInfo(version, filePath) {
+  return version ? { version, source: `transcript:${filePath}`, status: "known" } : null;
+}
+
+function getStoreClaudeVersion(options = {}) {
+  const fsApi = options.fs || fs;
+  const projectsDir = claudeProjectsDir(options);
+  const statRecord = (filePath) => {
+    try {
+      const stat = fsApi.statSync(filePath);
+      return { filePath, mtimeMs: stat.mtimeMs, size: stat.size, isFile: stat.isFile() };
+    } catch {
+      return null;
+    }
+  };
+  let names;
+  try {
+    names = fsApi.readdirSync(projectsDir);
+  } catch {
+    return { ...UNKNOWN_CLAUDE_VERSION };
+  }
+  const dirs = newestFirst(
+    names.map((name) => statRecord(path.join(projectsDir, name))).filter((record) => record && !record.isFile),
+    MAX_CLAUDE_PROJECT_DIRS
+  );
+  const files = [];
+  for (const dir of dirs) {
+    let entries;
+    try {
+      entries = fsApi.readdirSync(dir.filePath);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      if (files.length >= MAX_CLAUDE_TRANSCRIPT_FILES) break;
+      if (!name.endsWith(".jsonl")) continue;
+      const record = statRecord(path.join(dir.filePath, name));
+      if (record && record.isFile) files.push(record);
+    }
+  }
+  for (const file of newestFirst(files, MAX_CLAUDE_TRANSCRIPTS_READ)) {
+    let fd = null;
+    try {
+      const length = Math.min(file.size, CLAUDE_TRANSCRIPT_TAIL_BYTES);
+      const start = file.size - length;
+      const buffer = Buffer.alloc(length);
+      fd = fsApi.openSync(file.filePath, "r");
+      const read = fsApi.readSync(fd, buffer, 0, length, start);
+      const info = transcriptVersionInfo(
+        parseTranscriptTailVersion(buffer.toString("utf8", 0, read), start > 0),
+        file.filePath
+      );
+      if (info) return info;
+    } catch {
+    } finally {
+      if (fd !== null) try { fsApi.closeSync(fd); } catch {}
+    }
+  }
+  return { ...UNKNOWN_CLAUDE_VERSION };
+}
+
+async function getClaudeVersionFromTranscriptsAsync(options = {}) {
+  const fsp = options.fsPromises || fs.promises;
+  const projectsDir = claudeProjectsDir(options);
+  const statRecord = async (filePath) => {
+    try {
+      const stat = await fsp.stat(filePath);
+      return { filePath, mtimeMs: stat.mtimeMs, size: stat.size, isFile: stat.isFile() };
+    } catch {
+      return null;
+    }
+  };
+  let names;
+  try {
+    names = await fsp.readdir(projectsDir);
+  } catch {
+    return null;
+  }
+  const dirRecords = [];
+  for (const name of names) {
+    const record = await statRecord(path.join(projectsDir, name));
+    if (record && !record.isFile) dirRecords.push(record);
+  }
+  const files = [];
+  for (const dir of newestFirst(dirRecords, MAX_CLAUDE_PROJECT_DIRS)) {
+    let entries;
+    try {
+      entries = await fsp.readdir(dir.filePath);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      if (files.length >= MAX_CLAUDE_TRANSCRIPT_FILES) break;
+      if (!name.endsWith(".jsonl")) continue;
+      const record = await statRecord(path.join(dir.filePath, name));
+      if (record && record.isFile) files.push(record);
+    }
+  }
+  for (const file of newestFirst(files, MAX_CLAUDE_TRANSCRIPTS_READ)) {
+    let handle = null;
+    try {
+      const length = Math.min(file.size, CLAUDE_TRANSCRIPT_TAIL_BYTES);
+      const start = file.size - length;
+      const buffer = Buffer.alloc(length);
+      handle = await fsp.open(file.filePath, "r");
+      const { bytesRead } = await handle.read(buffer, 0, length, start);
+      const info = transcriptVersionInfo(
+        parseTranscriptTailVersion(buffer.toString("utf8", 0, bytesRead), start > 0),
+        file.filePath
+      );
+      if (info) return info;
+    } catch {
+    } finally {
+      if (handle) try { await handle.close(); } catch {}
+    }
+  }
+  return null;
+}
+
+// Versioned events this install manages for the Claude Code version it can
+// detect now (the store build asks again while the version is unknown).
+async function getSupportedClaudeVersionedEventsAsync(options = {}) {
+  const versionInfo = await getClaudeVersionAsync(options);
+  return getSupportedVersionedHooks(versionInfo).supported.map((hook) => hook.event);
 }
 
 const MARKER = "clawd-hook.js";
@@ -1274,7 +1448,8 @@ function registerHooks(options = {}) {
   let changed = false;
 
   // Detect CC version for versioned hooks filtering
-  const versionInfo = options.claudeVersionInfo || getClaudeVersion();
+  const versionInfo = options.claudeVersionInfo
+    || (ownership.store ? getStoreClaudeVersion(options) : getClaudeVersion());
   const { supported: supportedVersionedHooks, unsupported: unsupportedVersionedHooks } =
     getSupportedVersionedHooks(versionInfo);
   const supportedVersionedEvents = new Set(supportedVersionedHooks.map((hook) => hook.event));
@@ -2254,6 +2429,7 @@ module.exports = {
   getClaudeStatuslineScriptPath,
   getClaudeHookOwnership,
   getClaudePermissionUrl,
+  getSupportedClaudeVersionedEventsAsync,
   isStoreClaudeInstall,
   resolveClaudeHome,
   resolveClaudeSettingsPath,
@@ -2279,6 +2455,9 @@ module.exports = {
     readClaudeVersionFallbackAsync,
     getClaudeVersion,
     getClaudeVersionAsync,
+    getStoreClaudeVersion,
+    getClaudeVersionFromTranscriptsAsync,
+    parseTranscriptTailVersion,
     isClawdPermissionHook,
     isClawdPermissionUrl,
     removeMatchingHttpHooks,

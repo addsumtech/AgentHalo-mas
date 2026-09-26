@@ -264,6 +264,10 @@ function createClaudeSettingsWatcher(ctx = {}) {
   // automatically-repairable issue set, or null when nothing is being retried.
   let repairState = null;
   let healthStatus = initialHealthStatus(nowFn);
+  // Version-gated events (PreCompact, ...) the current Claude Code supports,
+  // when ctx.getVersionedHookEvents can tell. Refreshed before every check so
+  // a version that was unknown at connect time adds its hooks once known.
+  let versionedEvents = [];
 
   function getClaudeSettingsDir() {
     return typeof ctx.claudeSettingsDir === "string"
@@ -323,6 +327,13 @@ function createClaudeSettingsWatcher(ctx = {}) {
     }
   }
 
+  async function refreshVersionedEvents() {
+    try {
+      const events = await ctx.getVersionedHookEvents();
+      versionedEvents = Array.isArray(events) ? events.filter((event) => typeof event === "string") : [];
+    } catch {}
+  }
+
   function snapshotOf(raw) {
     return takeSnapshot(raw, { ownership });
   }
@@ -332,6 +343,7 @@ function createClaudeSettingsWatcher(ctx = {}) {
     return inspectClaudeHookHealth(raw, {
       expectedPermissionUrl: getClaudePermissionUrl(port, installOptions),
       ownership,
+      versionedEvents,
       expectedHookScriptPath,
       expectedAutoStartScriptPath,
       requireAutoStart: !!ctx.autoStartWithClaude,
@@ -374,6 +386,10 @@ function createClaudeSettingsWatcher(ctx = {}) {
         return;
       }
 
+      if (typeof ctx.getVersionedHookEvents === "function") {
+        await refreshVersionedEvents();
+        if (tokenAtStart !== lifecycleToken) return;
+      }
       const raw = readSettingsRaw();
       const report = buildReport(raw);
       await handleReport(report, raw, reason, tokenAtStart);

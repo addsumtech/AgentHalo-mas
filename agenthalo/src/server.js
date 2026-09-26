@@ -28,6 +28,8 @@ const {
   getClaudeAutoStartScriptPath,
   getClaudeHookOwnership,
   getClaudePermissionUrl,
+  getSupportedClaudeVersionedEventsAsync,
+  isStoreClaudeInstall,
   CLAUDE_CORE_HOOK_EVENTS,
   resolveClaudeSettingsPath,
 } = require("../hooks/install");
@@ -757,6 +759,18 @@ const claudeSettingsWatcher = createClaudeSettingsWatcher({
   // must track the CURRENT setting, not whatever it was when the watcher
   // was constructed at startup.
   get autoStartWithClaude() { return ctx.autoStartWithClaude; },
+  // Store build: PreCompact/PostCompact/StopFailure depend on the Claude Code
+  // version, which the sandbox reads from transcripts in the authorized
+  // folder. Asking on every health check lets a version that was still
+  // unknown when Claude Code was connected (no transcript yet) add them later.
+  getVersionedHookEvents: typeof ctx.getVersionedHookEvents === "function"
+    ? ctx.getVersionedHookEvents
+    : (isStoreClaudeInstall()
+      ? () => {
+        const home = claudeHomeOptions();
+        return home ? getSupportedClaudeVersionedEventsAsync(home) : [];
+      }
+      : undefined),
   shouldManageClaudeHooks,
   isAgentEnabled,
   shouldSyncAgentIntegration,

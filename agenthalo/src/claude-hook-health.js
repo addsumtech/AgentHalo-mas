@@ -61,6 +61,7 @@ const REPAIR_CLASS_BY_CODE = Object.freeze({
   "node-bin-invalid": "node-bin",
   "env-hook-migratable": "env-state-hook",
   "duplicate-managed-state-hook": "managed-hook-duplicates",
+  "missing-versioned-hook": "versioned-hooks",
 });
 
 // options.ownership (hooks/install.js getClaudeHookOwnership) narrows which
@@ -254,6 +255,8 @@ function inspectEventCommands(commands, event, marker, expectedScriptPath, valid
  * @param {string} [options.expectedAutoStartScriptPath]
  * @param {boolean} [options.requireAutoStart]
  * @param {string[]} [options.coreEvents]
+ * @param {string[]} [options.versionedEvents] - version-gated events the
+ *   current Claude Code supports; each must carry a managed command
  * @param {object} [options.ownership] - hooks/install.js getClaudeHookOwnership()
  * @param {string} [options.platform]
  * @param {object} [options.fs] — injected fs (existsSync at minimum)
@@ -262,6 +265,9 @@ function inspectClaudeHookHealth(rawSettings, options = {}) {
   const platform = options.platform || process.platform;
   const fsImpl = options.fs;
   const coreEvents = Array.isArray(options.coreEvents) ? options.coreEvents : [];
+  const versionedEvents = Array.isArray(options.versionedEvents)
+    ? options.versionedEvents.filter((event) => typeof event === "string" && !coreEvents.includes(event))
+    : [];
   const ownership = storeOwnership(options);
   const expectedPermissionUrl = options.expectedPermissionUrl || null;
   const expectedHookScriptPath = options.expectedHookScriptPath || null;
@@ -341,7 +347,8 @@ function inspectClaudeHookHealth(rawSettings, options = {}) {
   let hasUnverifiedEnvIndirection = false;
   const usableEnvNodeCandidate = ownership ? null : findUsableEnvNodeCandidate(parsed, validateOptions);
 
-  for (const event of coreEvents) {
+  for (const event of [...coreEvents, ...versionedEvents]) {
+    const versioned = !coreEvents.includes(event);
     const records = findManagedStateCommandRecords(parsed, event, ownership);
     commandCount += records.managed.length;
     for (const record of records.unverified) {
@@ -354,10 +361,14 @@ function inspectClaudeHookHealth(rawSettings, options = {}) {
       });
     }
     if (!records.managed.length) {
-      missingEvents.push(event);
+      if (versioned) {
+        pushIssue(issues, { code: "missing-versioned-hook", event, automaticRepairable: true });
+      } else {
+        missingEvents.push(event);
+      }
       continue;
     }
-    managedCoreEventCount++;
+    if (!versioned) managedCoreEventCount++;
     const mutationOwnedCount = records.managed.filter((record) => record.mutationOwned).length;
     if (mutationOwnedCount > 1) {
       pushIssue(issues, {

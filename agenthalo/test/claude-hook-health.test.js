@@ -646,6 +646,18 @@ describe("inspectClaudeHookHealth — store build ownership", () => {
     assert.deepStrictEqual(codes, ["missing-managed-core-hooks", "permission-url-mismatch"]);
   });
 
+  it("asks for the version-gated events the current Claude Code supports", () => {
+    const versionedEvents = ["PreCompact", "PostCompact", "StopFailure"];
+    const missing = inspectClaudeHookHealth(settingsWith(), storeOptions({ versionedEvents }));
+    assert.deepStrictEqual(
+      missing.issues.map((issue) => [issue.code, issue.event]),
+      versionedEvents.map((event) => ["missing-versioned-hook", event])
+    );
+    assert.strictEqual(buildClaudeRepairSignature(missing.issues), "v1:versioned-hooks");
+    const present = inspectClaudeHookHealth(settingsWith({ versioned: versionedEvents }), storeOptions({ versionedEvents }));
+    assert.strictEqual(present.status, "healthy", JSON.stringify(present.issues));
+  });
+
   it("keeps the default rules unless the store build's are passed", () => {
     const report = inspectClaudeHookHealth(settingsWith({ store: false }), storeOptions({
       ownership: install.getClaudeHookOwnership({ storeHooks: false }),

@@ -87,7 +87,7 @@ describe("store build and another AgentHalo install sharing settings.json", () =
     silent: true,
   });
 
-  function watcherFor({ store, port, sync }) {
+  function watcherFor({ store, port, sync, versioned = [] }) {
     const syncs = [];
     const watcher = createClaudeSettingsWatcher({
       storeHooks: store,
@@ -95,6 +95,7 @@ describe("store build and another AgentHalo install sharing settings.json", () =
       claudeSettingsDir: dir,
       autoStartWithClaude: true,
       getHookServerPort: () => port,
+      getVersionedHookEvents: () => versioned,
       syncClawdHooks: async (options) => {
         syncs.push(options.source);
         return sync();
@@ -193,7 +194,7 @@ describe("store build and another AgentHalo install sharing settings.json", () =
 
   it("settles both settings watchers after one repair each", async () => {
     const other = watcherFor({ store: false, port: OTHER_PORT, sync: otherSync });
-    const store = watcherFor({ store: true, port: STORE_PORT, sync: storeSync });
+    const store = watcherFor({ store: true, port: STORE_PORT, sync: storeSync, versioned: VERSIONED_EVENTS });
 
     for (let round = 0; round < 6; round++) {
       await other.watcher.checkNow("settings-event");
