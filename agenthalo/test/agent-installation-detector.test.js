@@ -562,6 +562,24 @@ describe("agent installation detector", () => {
     assert.strictEqual(entry.reason, "insufficient-evidence");
   });
 
+  it("does not take the store build's ZCode hooks, or Claude hooks imported from it, for ZCode", () => {
+    const homeDir = makeHome();
+    mkdirp(path.join(homeDir, ".zcode"));
+    registerZcodeHooks({ homeDir, silent: true, storeHooks: true });
+    const configPath = path.join(homeDir, ".zcode", "cli", "config.json");
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    config.hooks.events.Stop.push({ hooks: [{
+      type: "process",
+      command: "/Applications/AgentHalo.app/Contents/Resources/app.asar.unpacked/hooks/node-launcher.sh",
+      args: ["/Applications/AgentHalo.app/Contents/Resources/app.asar.unpacked/hooks/agenthalo-store-hook.js", "Stop"],
+    }] });
+    writeJson(configPath, config);
+
+    const entry = byId(detectAgentInstallations({ homeDir, now: 1, env: {} }), "zcode");
+    assert.strictEqual(entry.detectedInstalled, null);
+    assert.strictEqual(entry.reason, "insufficient-evidence");
+  });
+
   it("subtracts migrated ZCode and both exact CodeBuddy permission ownership shapes", () => {
     const zcodeHome = makeHome();
     writeJson(path.join(zcodeHome, ".zcode", "cli", "config.json"), {

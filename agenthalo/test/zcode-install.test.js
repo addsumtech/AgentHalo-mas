@@ -521,6 +521,32 @@ describe("ZCode hook installer", () => {
     assert.deepStrictEqual(readJson(settingsPath), {});
   });
 
+  it("runs the store build's hooks through its bundled launcher", () => {
+    const { getBundledNodeLauncherPath } = require("../hooks/server-config");
+    const launcher = getBundledNodeLauncherPath();
+    const settingsPath = makeTempConfigFile({});
+
+    const result = registerZcodeHooks({ silent: true, settingsPath, storeHooks: true });
+    assert.strictEqual(result.added, ZCODE_HOOK_EVENTS.length);
+    const settings = readJson(settingsPath);
+    for (const event of ZCODE_HOOK_EVENTS) {
+      const hook = settings.hooks.events[event][0].hooks[0];
+      assert.strictEqual(hook.type, "process");
+      assert.strictEqual(hook.command, launcher);
+      assert.strictEqual(path.basename(hook.args[0]), "agenthalo-store-zcode.js");
+      assert.strictEqual(hook.args[1], event);
+    }
+
+    // Only the store build runs hooks through a launcher; everywhere else
+    // ZCode still needs a Node executable.
+    const otherPath = makeTempConfigFile({});
+    assert.throws(
+      () => registerZcodeHooks({ silent: true, settingsPath: otherPath, storeHooks: false, nodeBin: launcher }),
+      /absolute Node executable path is required/
+    );
+    assert.deepStrictEqual(readJson(otherPath), {});
+  });
+
   it("skips startup auto-sync when ~/.zcode does not exist", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-zcode-home-"));
     tempDirs.push(tmpDir);

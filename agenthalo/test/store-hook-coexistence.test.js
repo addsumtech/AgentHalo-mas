@@ -282,10 +282,7 @@ const TOOLS = [
     // ZCode runs same-event hooks serially and the last permission decision
     // wins, so each install leaves PermissionRequest to one it does not own.
     counts: { other: 7, store: 6 },
-    // The store build cannot run ZCode hooks through its launcher (ZCode
-    // wants a Node executable, see below); these runs give it one so its
-    // ownership rules can be checked.
-    storeNode: OTHER_NODE,
+    // Earlier store builds wrote no ZCode hooks: they refused the launcher.
     noLegacy: true,
     files: (home) => [path.join(home, ".zcode", "cli", "config.json")],
     seed(home) {
@@ -442,8 +439,8 @@ function otherOptions() {
   return { storeHooks: false, nodeBin: OTHER_NODE, port: OTHER_PORT };
 }
 
-function storeOptions(tool) {
-  return { storeHooks: true, port: STORE_PORT, ...(tool.storeNode ? { nodeBin: tool.storeNode } : {}) };
+function storeOptions() {
+  return { storeHooks: true, port: STORE_PORT };
 }
 
 // Entries the store build writes with no other install present: the ones the
@@ -498,7 +495,7 @@ describe("store build and another AgentHalo install sharing a tool's hook config
     describe(tool.id, () => {
       it("writes store entries none of the other install's rules match", () => {
         tool.seed(home);
-        tool.register(home, storeOptions(tool));
+        tool.register(home, storeOptions());
         const { store, other, user, unknown } = sides(tool, home);
         assert.equal(store.length, aloneCount(tool));
         assert.deepEqual(other, []);
@@ -509,7 +506,7 @@ describe("store build and another AgentHalo install sharing a tool's hook config
             assert.equal(text.includes(marker), false, `${text} mentions ${marker}`);
           }
           if (!text.startsWith("http")) {
-            assert.ok(text.includes(tool.storeNode || LAUNCHER), text);
+            assert.ok(text.includes(LAUNCHER), text);
           }
         }
         for (const record of tool.records(home).filter(isStoreRecord)) {
@@ -523,7 +520,7 @@ describe("store build and another AgentHalo install sharing a tool's hook config
         it(`converges with no further writes when both keep syncing (${order})`, () => {
           tool.seed(home);
           const syncOther = () => tool.register(home, otherOptions());
-          const syncStore = () => tool.register(home, storeOptions(tool));
+          const syncStore = () => tool.register(home, storeOptions());
           const [first, second] = order === "other first" ? [syncOther, syncStore] : [syncStore, syncOther];
           first();
           second();
@@ -548,13 +545,13 @@ describe("store build and another AgentHalo install sharing a tool's hook config
       it("stays converged when the store app moves and rewrites its own entries", () => {
         tool.seed(home);
         tool.register(home, otherOptions());
-        tool.register(home, storeOptions(tool));
+        tool.register(home, storeOptions());
         const before = sides(tool, home);
 
         // Only the store build's command changes (a moved app runs another
         // launcher); it updates its entries in place.
-        const movedNode = tool.storeNode ? THIRD_NODE : "/Applications/Moved/AgentHalo.app/Contents/Resources/app.asar.unpacked/hooks/node-launcher.sh";
-        tool.register(home, { ...storeOptions(tool), nodeBin: movedNode });
+        const movedNode = "/Applications/Moved/AgentHalo.app/Contents/Resources/app.asar.unpacked/hooks/node-launcher.sh";
+        tool.register(home, { ...storeOptions(), nodeBin: movedNode });
         const moved = snapshot(tool, home);
         const after = sides(tool, home);
         assert.equal(after.store.length, before.store.length);
@@ -569,18 +566,18 @@ describe("store build and another AgentHalo install sharing a tool's hook config
       it("disconnecting either side removes only that side's entries", () => {
         tool.seed(home);
         tool.register(home, otherOptions());
-        tool.register(home, storeOptions(tool));
+        tool.register(home, storeOptions());
         const before = sides(tool, home);
         assert.equal(before.other.length, tool.counts.other);
         assert.equal(before.store.length, tool.counts.store);
 
-        tool.unregister(home, storeOptions(tool));
+        tool.unregister(home, storeOptions());
         let after = sides(tool, home);
         assert.deepEqual(after.store, []);
         assert.deepEqual(after.other, before.other);
         assert.deepEqual(after.user, before.user);
 
-        tool.register(home, storeOptions(tool));
+        tool.register(home, storeOptions());
         const storeBack = sides(tool, home).store;
         assert.ok(storeBack.length > 0);
         tool.unregister(home, otherOptions());
@@ -599,7 +596,7 @@ describe("store build and another AgentHalo install sharing a tool's hook config
           const legacy = tool.records(home).filter((record) => record.text.includes(LAUNCHER));
           assert.ok(legacy.length > 0);
 
-          tool.register(home, storeOptions(tool));
+          tool.register(home, storeOptions());
           const { other, store, user, unknown } = sides(tool, home);
           assert.deepEqual(other, [], "nothing of the earlier store format is left");
           assert.equal(store.length, aloneCount(tool));
@@ -648,7 +645,7 @@ describe("store build removes only its own entries on cleanup", () => {
       // The other install's Codex hooks go through its launcher in ~/.codex,
       // as `node hooks/codex-install.js` writes them.
       tool.register(home, { ...otherOptions(), ...(tool.id === "codex" ? { stableLauncher: true } : {}) });
-      tool.register(home, storeOptions(tool));
+      tool.register(home, storeOptions());
     }
     const stableLauncher = path.join(home, ".codex", "clawd-hooks", "codex-hook.js.sh");
     assert.ok(fs.existsSync(stableLauncher));
@@ -710,7 +707,7 @@ describe("Doctor in the store build", () => {
     return checkAgentIntegrations({ descriptors: [descriptorFor(tool)], prefs: {} }).details[0];
   }
 
-  const CHECKED = ["gemini-cli", "antigravity-cli", "cursor-agent", "copilot-cli", "codebuddy", "workbuddy",
+  const CHECKED = ["gemini-cli", "antigravity-cli", "cursor-agent", "copilot-cli", "codebuddy", "workbuddy", "zcode",
     "qwen-code", "codewhale", "codex", "qoder", "reasonix", "qoderwork", "traecode", "qwenwork"];
 
   for (const id of CHECKED) {
@@ -721,12 +718,24 @@ describe("Doctor in the store build", () => {
       const otherOnly = check(tool);
       assert.equal(otherOnly.status, "not-connected", JSON.stringify(otherOnly));
 
-      tool.register(home, storeOptions(tool));
+      tool.register(home, storeOptions());
       const both = check(tool);
       if (id === "codex") {
         // Codex asks the user to review new hooks; only the store's six count.
         assert.equal(both.status, "needs-review", JSON.stringify(both));
         assert.equal(both.codexHookTrust.totalCount, 6);
+      } else if (id === "zcode") {
+        // The other install took PermissionRequest first (ZCode's last answer
+        // wins, so one install keeps it). Doctor says so as it does for any
+        // other owner of that event; the six state hooks are the store's.
+        assert.equal(both.supplementary.value, "permission-conflict", JSON.stringify(both));
+        assert.equal(both.commandCount, 6);
+        assert.equal(both.fixAction, undefined);
+        tool.unregister(home, otherOptions());
+        tool.register(home, storeOptions());
+        const alone = check(tool);
+        assert.equal(alone.status, "ok", JSON.stringify(alone));
+        assert.ok(alone.scriptPath.startsWith(STORE_SCRIPT_PREFIX), alone.scriptPath);
       } else {
         assert.equal(both.status, "ok", JSON.stringify(both));
         if (both.scriptPath) assert.ok(both.scriptPath.startsWith(STORE_SCRIPT_PREFIX), both.scriptPath);
@@ -805,8 +814,7 @@ describe("Doctor's command parser reads every command the store build writes", (
     return out.filter((entry) => (entry.command || entry.argv.join(" ")).includes(STORE_SCRIPT_PREFIX));
   }
 
-  // The store build writes no ZCode hooks yet (see "leave ZCode alone" below).
-  for (const tool of [CLAUDE, ...TOOLS.filter((entry) => entry.id !== "zcode")]) {
+  for (const tool of [CLAUDE, ...TOOLS]) {
     it(`${tool.id}: every store command runs the launcher with a store entry script`, async () => {
       const scripts = SCRIPTS[tool.id] || [ownership.STORE_HOOK_SCRIPTS[tool.id]];
       tool.seed(home);
@@ -955,10 +963,10 @@ describe("store ownership rules", () => {
       const cb = TOOLS.find((entry) => entry.id === "codebuddy");
       cb.seed(home);
       cb.register(home, { ...otherOptions(), port: STORE_PORT });
-      cb.register(home, storeOptions(cb));
+      cb.register(home, storeOptions());
       const urls = () => hookRecords(readJson(cb.files(home)[0]).hooks.PermissionRequest).map((r) => r.text);
       assert.deepEqual(urls(), [USER_URL, buildPermissionUrl(STORE_PORT), buildStorePermissionUrl(STORE_PORT)]);
-      cb.unregister(home, storeOptions(cb));
+      cb.unregister(home, storeOptions());
       assert.deepEqual(urls(), [USER_URL, buildPermissionUrl(STORE_PORT)]);
 
       // WorkBuddy no longer registers one; a leftover belongs to whoever wrote it.
@@ -968,8 +976,8 @@ describe("store ownership rules", () => {
       const settings = readJson(settingsPath);
       settings.hooks.PermissionRequest = [{ matcher: "", hooks: [{ type: "http", url: buildPermissionUrl(OTHER_PORT) }] }];
       writeJson(settingsPath, settings);
-      wb.register(home, storeOptions(wb));
-      wb.unregister(home, storeOptions(wb));
+      wb.register(home, storeOptions());
+      wb.unregister(home, storeOptions());
       assert.deepEqual(hookRecords(readJson(settingsPath).hooks.PermissionRequest).map((r) => r.text), [
         buildPermissionUrl(OTHER_PORT),
       ]);
@@ -978,15 +986,47 @@ describe("store ownership rules", () => {
     }
   });
 
-  it("leave ZCode alone when the store build has no Node executable to run its hooks", () => {
+  it("give ZCode process hooks that run the launcher, and ZCode can run them", () => {
+    const { spawnSync } = require("node:child_process");
+    const { HTTP_RECORDER } = require("./helpers/spawned-hook");
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "agenthalo-store-zcode-"));
     try {
       const tool = TOOLS.find((entry) => entry.id === "zcode");
       tool.seed(home);
-      tool.register(home, otherOptions());
-      const before = snapshot(tool, home);
-      assert.throws(() => tool.register(home, { storeHooks: true }), /absolute Node executable/);
-      assert.deepEqual(snapshot(tool, home), before);
+      tool.register(home, storeOptions());
+      const events = readJson(tool.files(home)[0]).hooks.events;
+      const stop = events.Stop.flatMap((entry) => entry.hooks)
+        .find((hook) => Array.isArray(hook.args) && hook.args[0].startsWith(STORE_SCRIPT_PREFIX));
+      assert.deepEqual(stop, {
+        type: "process",
+        command: LAUNCHER,
+        args: [`${HOOKS_DIR}/${ownership.STORE_HOOK_SCRIPTS.zcode}`, "Stop"],
+        timeoutMs: zcode.timeoutMsForZcodeEvent("Stop"),
+      });
+
+      // ZCode spawns `command` with `args` as argv and no shell.
+      const attemptsPath = path.join(home, "http-attempts.json");
+      const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("CLAWD_")));
+      const result = spawnSync(stop.command, stop.args, {
+        shell: false,
+        input: `${JSON.stringify({ hook_event_name: "Stop", session_id: "s-store-zcode", cwd: "/tmp" })}\n`,
+        encoding: "utf8",
+        timeout: 20000,
+        env: {
+          ...env,
+          HOME: home,
+          USERPROFILE: home,
+          PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`,
+          NODE_OPTIONS: `--require ${HTTP_RECORDER}`,
+          CLAWD_POST_OUT: attemptsPath,
+          CLAWD_POST_RECORDER_SUCCEED: "1",
+        },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      const posted = JSON.parse(fs.readFileSync(attemptsPath, "utf8"))
+        .filter((attempt) => attempt.kind === "request" && attempt.body)
+        .map((attempt) => JSON.parse(attempt.body));
+      assert.ok(posted.some((body) => body.agent_id === "zcode" && body.event === "Stop"), JSON.stringify(posted));
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
     }

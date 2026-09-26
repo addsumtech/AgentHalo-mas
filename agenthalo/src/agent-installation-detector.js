@@ -14,6 +14,7 @@ const zcode = require("../hooks/zcode-install");
 const codebuddy = require("../hooks/codebuddy-install");
 const openclaw = require("../hooks/openclaw-install");
 const { commandMatchesMarker } = require("../hooks/json-utils");
+const { STORE_HOOK_SCRIPTS } = require("../hooks/store-hook-ownership");
 const { identifyCustomApplication } = require("./custom-applications");
 
 // Agents whose detector parent dir the DEFAULT startup sync creates on its own,
@@ -319,13 +320,22 @@ function hookTreeHasForeignEntry(value, isOwnedHook) {
   return Object.values(value).some((entry) => hookTreeHasForeignEntry(entry, isOwnedHook));
 }
 
+// The Mac App Store build's ZCode hooks, and Claude hooks ZCode imported from
+// it, run entry scripts of its own (named in args); see
+// hooks/store-hook-ownership.js.
+const STORE_ZCODE_RESIDUE_MARKERS = Object.freeze([
+  STORE_HOOK_SCRIPTS.zcode,
+  STORE_HOOK_SCRIPTS["claude-code"],
+]);
+
 function isOwnedZcodeHook(entry) {
   if (zcode.isClawdZcodeHook(entry)) return true;
   if (zcode.isClaudeHookCommand(entry && entry.command)) return true;
   // ZCode can import Claude process hooks with the marker in args rather than
   // command. Those are still AgentHalo residue and must not become product proof.
   try {
-    return hasClawdMarkerText(JSON.stringify(entry), zcode.CLAUDE_MARKER);
+    const text = JSON.stringify(entry);
+    return [zcode.CLAUDE_MARKER, ...STORE_ZCODE_RESIDUE_MARKERS].some((marker) => hasClawdMarkerText(text, marker));
   } catch {
     return false;
   }

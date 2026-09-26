@@ -18,7 +18,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { resolveNodeBin } = require("./server-config");
+const { getBundledNodeLauncherPath, resolveNodeBin } = require("./server-config");
 const {
   readJsonFile,
   writeJsonAtomic,
@@ -102,6 +102,17 @@ function isAbsoluteNodeBin(value) {
     (path.posix.isAbsolute(value) || path.win32.isAbsolute(value))
     && (base === "node" || base === "node.exe")
   );
+}
+
+// ZCode runs a process hook's `command` with `args` as argv and no shell
+// (its hook docs; its runner calls spawn(command, args, { shell: false })), so
+// the command can be any absolute executable: a Node binary, or the store
+// build's hooks/node-launcher.sh, an executable sh script that finds Node and
+// execs it with the same arguments (the kernel reads its #! line).
+function isAbsoluteStoreLauncher(value) {
+  return typeof value === "string"
+    && path.posix.isAbsolute(value)
+    && path.posix.basename(value) === path.posix.basename(getBundledNodeLauncherPath());
 }
 
 function timeoutMsForZcodeEvent(event) {
@@ -526,14 +537,13 @@ function registerZcodeHooks(options = {}) {
   const hookScript = ownership.store
     ? storeHookScriptPath(STORE_HOOK_SCRIPTS.zcode)
     : asarUnpackedPath(path.resolve(__dirname, MARKER).replace(/\\/g, "/"));
-  // Store build: the bundled launcher is not a Node executable, so ZCode
-  // registration below refuses it just as it refuses a bare "node".
+  // Store build: ZCode runs the bundled launcher (see isAbsoluteStoreLauncher).
   const resolved = ownership.store
     ? storeNodeBin(options)
     : (options.nodeBin !== undefined ? options.nodeBin : resolveNodeBin());
   const nodeBin = resolved
     || extractExistingZcodeNodeBin(settings, MARKER);
-  if (!isAbsoluteNodeBin(nodeBin)) {
+  if (!isAbsoluteNodeBin(nodeBin) && !(ownership.store && isAbsoluteStoreLauncher(nodeBin))) {
     throw new Error(
       "Unable to register ZCode hooks: an absolute Node executable path is required"
     );
