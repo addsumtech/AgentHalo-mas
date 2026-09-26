@@ -100,6 +100,13 @@ function initMobilePreviewServer(ctx) {
   const writeTokenState = ctx && typeof ctx.writeTokenState === "function"
     ? ctx.writeTokenState
     : atomicWrite;
+  // First of the PORT_RANGE candidate ports. Tests pass a free range of their
+  // own: another app (a running AgentHalo, for one) may hold 127.0.0.1 on the
+  // default ports, where a 0.0.0.0 listener still binds but loopback clients
+  // reach the other app.
+  const basePort = ctx && Number.isInteger(ctx.basePort) && ctx.basePort > 0
+    ? ctx.basePort
+    : DEFAULT_PORT;
   const tokenState = loadOrCreateTokenState(tokenPath, now, writeTokenState);
   const clients = new Set();
   const clientMeta = new Map();
@@ -521,7 +528,7 @@ function initMobilePreviewServer(ctx) {
       return Promise.reject(err);
     }
     const ports = [];
-    for (let i = 0; i < PORT_RANGE; i++) ports.push(DEFAULT_PORT + i);
+    for (let i = 0; i < PORT_RANGE; i++) ports.push(basePort + i);
     let idx = 0;
     let socketServer = null;
     let settled = false;
