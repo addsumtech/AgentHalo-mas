@@ -76,6 +76,12 @@ describe("store exchange folders", () => {
     };
     sandboxAccess.retainAllAuthorized({ userDataDir, electron });
     assert.deepEqual(sandboxAccess.exchangeDirs({ userDataDir }), []);
+    // Stale marks are process-wide; a bookmark that resolves again clears it.
+    sandboxAccess.retainAllAuthorized({
+      userDataDir,
+      electron: { app: { startAccessingSecurityScopedResource: () => () => {} } },
+    });
+    assert.deepEqual(sandboxAccess.exchangeDirs({ userDataDir }), [path.join(home, ".codex", "agenthalo")]);
   });
 });
 
@@ -244,6 +250,92 @@ describe("Claude recovery leases in the store build", () => {
   it("are the ones the app restores from", () => {
     const main = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
     assert.match(main, /\.\.\.\(process\.mas \? storeRecoveryLeaseOptions\(\) : \{\}\)/);
-    assert.match(main, /exchangeDir\("claude-code"\)[\s\S]{0,200}LEASE_DIR_NAME/);
+    assert.match(main, /dirFor\("claude-code"\)[\s\S]{0,200}LEASE_DIR_NAME/);
+  });
+});
+
+describe("exchange folders follow the connected tools", () => {
+  const { clearExchangeDir, createStoreExchangeFolders } = require("../src/store-exchange-folders");
+  let root;
+  let home;
+  let userDataDir;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "agenthalo-exchange-sync-"));
+    home = path.join(root, "home");
+    userDataDir = path.join(root, "userData");
+    for (const folder of [".claude", ".codex"]) {
+      fs.mkdirSync(path.join(home, folder), { recursive: true });
+      sandboxAccess.saveAuthorized(folder === ".claude" ? "claude-code" : "codex", path.join(home, folder), "bm", { userDataDir });
+    }
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const exchange = (folder) => path.join(home, folder, "agenthalo");
+
+  function fillExchange(dir) {
+    serverConfig.writeRuntimeConfig(23333, { runtimeConfigPath: path.join(dir, "runtime.json"), ownerPid: process.pid });
+    serverConfig.writeCodexAutoStartGate(true, { gatePath: path.join(dir, "codex-auto-start.json") });
+    fs.mkdirSync(path.join(dir, recoveryLease.LEASE_DIR_NAME), { recursive: true });
+    fs.writeFileSync(path.join(dir, recoveryLease.LEASE_DIR_NAME, "session-recovery-v1-x.json"), "{}");
+  }
+
+  it("clears only what AgentHalo keeps in a folder", () => {
+    const dir = exchange(".claude");
+    fillExchange(dir);
+    assert.equal(clearExchangeDir(dir), true);
+    assert.equal(fs.existsSync(dir), false);
+
+    fillExchange(dir);
+    fs.writeFileSync(path.join(dir, "notes.txt"), "the user's");
+    assert.equal(clearExchangeDir(dir), false, "a folder with other files stays");
+    assert.deepEqual(fs.readdirSync(dir), ["notes.txt"]);
+
+    serverConfig.writeRuntimeConfig(23334, { runtimeConfigPath: path.join(dir, "runtime.json"), ownerPid: 999999 });
+    clearExchangeDir(dir);
+    assert.ok(fs.existsSync(path.join(dir, "runtime.json")), "another instance's runtime.json stays");
+    assert.equal(clearExchangeDir(path.join(home, ".claude")), false, "only an agenthalo folder is touched");
+    assert.ok(fs.existsSync(path.join(home, ".claude")));
+  });
+
+  it("writes to connected tools only and clears a tool once it is disconnected", () => {
+    const connected = new Set(["claude-code"]);
+    let refreshes = 0;
+    fillExchange(exchange(".codex")); // left by an earlier run
+    const folders = createStoreExchangeFolders({
+      userDataDir,
+      isConnected: (agentId) => connected.has(agentId),
+      isAuthoritative: () => true,
+      refreshRuntimeConfig: () => { refreshes += 1; },
+    });
+    assert.deepEqual(folders.dirs(), [exchange(".claude")]);
+    assert.equal(folders.dirFor("codex"), null);
+    assert.equal(folders.sync(), true);
+    assert.equal(fs.existsSync(exchange(".codex")), false, "the disconnected tool's folder is cleared on the first sync");
+    assert.equal(refreshes, 1);
+
+    fillExchange(exchange(".claude"));
+    connected.delete("claude-code");
+    connected.add("codex");
+    folders.sync();
+    assert.equal(fs.existsSync(exchange(".claude")), false);
+    assert.deepEqual(folders.dirs(), [exchange(".codex")]);
+    assert.equal(folders.dirFor("codex"), exchange(".codex"));
+  });
+
+  it("touches nothing while the preferences cannot say what is connected", () => {
+    fillExchange(exchange(".claude"));
+    const folders = createStoreExchangeFolders({
+      userDataDir,
+      isConnected: () => false,
+      isAuthoritative: () => false,
+    });
+    assert.deepEqual(folders.dirs(), []);
+    assert.equal(folders.dirFor("claude-code"), null);
+    assert.equal(folders.sync(), false);
+    assert.ok(fs.existsSync(path.join(exchange(".claude"), "runtime.json")));
   });
 });

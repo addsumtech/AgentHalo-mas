@@ -327,14 +327,17 @@ const _evaluateCodexAutoStartGate = createCodexAutoStartGateEvaluator({
   authorityLost: _codexAutoStartAuthorityLost,
 });
 
-// Last gate value written, so authorizing ~/.codex later can copy it there.
+// Last gate value written, so connecting Codex later can copy it there.
 let _codexAutoStartGateValue = null;
+// Store build only: the authorized tool folders that hold the files hooks
+// read (src/store-exchange-folders.js). Set once the HTTP server exists.
+let _storeExchangeFolders = null;
 
 function _persistCodexAutoStartGate(enabled) {
   _codexAutoStartGateValue = enabled === true;
   // Store build: Codex hooks read the gate from the authorized Codex folder
   // (see hooks/store-exchange.js), not the container's ~/.clawd.
-  const codexExchangeDir = process.mas ? require("./sandbox-access").exchangeDir("codex") : null;
+  const codexExchangeDir = _storeExchangeFolders ? _storeExchangeFolders.dirFor("codex") : null;
   return writeCodexAutoStartGate(_codexAutoStartGateValue, {
     mirrorDirs: codexExchangeDir ? [codexExchangeDir] : [],
   });
@@ -486,10 +489,7 @@ const _settingsController = createSettingsController({
       if (result && result.status === "ok") {
         sandboxAccess.applyToolEnvironment();
         // Give the new folder the files hooks look for there.
-        _server.refreshRuntimeConfig();
-        if (id === "codex" && _codexAutoStartGateValue !== null) {
-          _persistCodexAutoStartGate(_codexAutoStartGateValue);
-        }
+        _syncStoreExchangeFolders();
       }
       return result;
     },
@@ -2661,7 +2661,7 @@ agentRuntime = createAgentRuntimeMain({
 // Store build: Claude hooks keep recovery leases in the authorized Claude
 // folder, since the app container's ~/.clawd is out of their reach.
 function storeRecoveryLeaseOptions() {
-  const dir = require("./sandbox-access").exchangeDir("claude-code");
+  const dir = _storeExchangeFolders ? _storeExchangeFolders.dirFor("claude-code") : null;
   return dir ? { recoveryDir: path.join(dir, require("../hooks/session-recovery-lease").LEASE_DIR_NAME) } : {};
 }
 
@@ -2672,7 +2672,7 @@ const _serverCtx = {
   getClaudeHomeDir: () => require("./sandbox-access").authorizedHomeDir("claude-code"),
   // Its ~/.clawd sits in the app container, so hooks find runtime.json in the
   // authorized tool folders instead (see hooks/store-exchange.js).
-  getRuntimeMirrorDirs: () => (process.mas ? require("./sandbox-access").exchangeDirs() : []),
+  getRuntimeMirrorDirs: () => (_storeExchangeFolders ? _storeExchangeFolders.dirs() : []),
   get manageClaudeHooksAutomatically() { return manageClaudeHooksAutomatically; },
   get autoStartWithClaude() { return autoStartWithClaude; },
   get claudeQuotaCollectionEnabled() { return claudeQuotaCollectionEnabled; },
@@ -2744,6 +2744,23 @@ const _serverCtx = {
   permLog,
 };
 const _server = require("./server")(_serverCtx);
+
+if (process.mas) {
+  _storeExchangeFolders = require("./store-exchange-folders").createStoreExchangeFolders({
+    isConnected: (agentId) => _runtimeAgentGate.isAgentIntegrationInstalled(agentId),
+    isAuthoritative: () => _runtimeAgentGate.isAuthoritative(),
+    refreshRuntimeConfig: () => _server.refreshRuntimeConfig(),
+  });
+}
+
+// Store build: write the shared files into newly connected or authorized
+// tool folders and take them out of disconnected ones.
+function _syncStoreExchangeFolders() {
+  if (!_storeExchangeFolders) return;
+  _storeExchangeFolders.sync();
+  if (_codexAutoStartGateValue !== null) _persistCodexAutoStartGate(_codexAutoStartGateValue);
+}
+_settingsController.subscribeKey("agents", () => _syncStoreExchangeFolders());
 const { startHttpServer, getHookServerPort } = _server;
 
 // ── LAN WebSocket bridge for PWA mobile clients (lazy-loaded) ──
@@ -3604,6 +3621,7 @@ function createWindow() {
   // Restore local sessions once the hook server is listening.
   startHttpServer().then((port) => {
     if (port == null) return;
+    _syncStoreExchangeFolders();
     const restoredSessionIds = restoreSessionsFromRecoveryLeases(_state, {
       ...(process.mas ? storeRecoveryLeaseOptions() : {}),
       isAgentEnabled: (agentId) => (

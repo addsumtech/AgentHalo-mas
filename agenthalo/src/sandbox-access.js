@@ -363,9 +363,11 @@ function exchangeDir(agentId, options = {}) {
   return storeExchange.authorizedExchangeDir(agentId, record, options);
 }
 
+// options.include(agentId) narrows the list, e.g. to connected tools.
 function exchangeDirs(options = {}) {
   const dirs = [];
   for (const agentId of Object.keys(readStore(options))) {
+    if (typeof options.include === "function" && !options.include(agentId)) continue;
     const dir = exchangeDir(agentId, options);
     if (dir && !dirs.includes(dir)) dirs.push(dir);
   }
