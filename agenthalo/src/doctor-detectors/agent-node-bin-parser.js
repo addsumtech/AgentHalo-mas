@@ -91,10 +91,15 @@ function tokenizeCommand(command) {
   return tokens;
 }
 
+// The Mac App Store build cannot see the user's Node, so its hook commands
+// start the bundled hooks/node-launcher.sh, which finds node and execs it with
+// the same arguments. The launcher stands where a Node executable would.
+const NODE_LAUNCHER_NAME = "node-launcher.sh";
+
 function looksLikeNodeCandidate(value) {
   const text = String(value || "");
   const base = path.basename(text.replace(/\\/g, "/")).toLowerCase();
-  return base === "node" || base === "node.exe";
+  return base === "node" || base === "node.exe" || base === NODE_LAUNCHER_NAME;
 }
 
 function looksLikeHookScriptToken(value) {

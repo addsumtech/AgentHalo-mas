@@ -173,6 +173,36 @@ describe("doctor hook command parser", () => {
     );
   });
 
+  it("reads the store build's launcher as the Node inside Antigravity's fail-open wrapper", () => {
+    // The wrapper's own quoted tokens ("$tmp_dir/clawd-agy-in.XXXXXX", ...) come
+    // first, and the store entry script's name does not end in hook.js.
+    const launcher = "/Applications/AgentHalo.app/Contents/Resources/app.asar.unpacked/hooks/node-launcher.sh";
+    const scriptPath = "/Applications/AgentHalo.app/Contents/Resources/app.asar.unpacked/hooks/agenthalo-store-antigravity.js";
+    const command = antigravityInstallTest.buildAntigravityHookCommand(
+      launcher,
+      scriptPath,
+      "PreInvocation",
+      { platform: "darwin" }
+    );
+
+    assert.deepStrictEqual(
+      validateHookCommand(command, {
+        platform: "darwin",
+        fs: fakeFs([launcher, scriptPath]),
+      }),
+      { ok: true, nodeBin: launcher, scriptPath }
+    );
+    assert.deepStrictEqual(
+      validateHookTarget({ nodeBin: launcher, scriptPath }, {
+        platform: "darwin",
+        fs: fakeFs([launcher, scriptPath]),
+        requireAbsoluteNode: true,
+        requireNodeExecutable: true,
+      }),
+      { ok: true, nodeBin: launcher, scriptPath }
+    );
+  });
+
   it("does not mistake preload scripts for the hook script", () => {
     const nodeBin = "/usr/local/bin/node";
     const scriptPath = "/opt/clawd/hooks/antigravity-hook.js";

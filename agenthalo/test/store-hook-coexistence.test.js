@@ -727,16 +727,117 @@ describe("Doctor in the store build", () => {
         // Codex asks the user to review new hooks; only the store's six count.
         assert.equal(both.status, "needs-review", JSON.stringify(both));
         assert.equal(both.codexHookTrust.totalCount, 6);
-      } else if (id === "antigravity-cli") {
-        // Doctor's command parser does not take the launcher for a Node inside
-        // Antigravity's fail-open shell wrapper (the same before these entry
-        // scripts), so it judges the store's four commands as unparsed.
-        assert.equal(both.commandCount, 4, JSON.stringify(both));
-        assert.notEqual(both.status, "not-connected");
       } else {
         assert.equal(both.status, "ok", JSON.stringify(both));
         if (both.scriptPath) assert.ok(both.scriptPath.startsWith(STORE_SCRIPT_PREFIX), both.scriptPath);
       }
+    });
+  }
+});
+
+describe("Doctor's command parser reads every command the store build writes", () => {
+  const install = require("../hooks/install");
+  const {
+    parseHookCommand,
+    validateHookCommand,
+    validateHookTarget,
+  } = require("../src/doctor-detectors/agent-node-bin-parser");
+  const CLAUDE = {
+    id: "claude-code",
+    files: (home) => [path.join(home, ".claude", "settings.json")],
+    seed(home) { writeJson(this.files(home)[0], {}); },
+    async register(home, options) {
+      const settingsPath = this.files(home)[0];
+      await install.registerHooksAsync({
+        settingsPath,
+        autoStart: true,
+        claudeVersionInfo: { version: "2.1.283", source: "test", status: "known" },
+        silent: true,
+        ...options,
+      });
+      install.registerClaudeStatusline({ settingsPath, silent: true, ...options });
+    },
+  };
+  // The entry scripts each tool's commands run.
+  const SCRIPTS = {
+    "claude-code": [install.STORE_HOOK_SCRIPT, install.STORE_AUTO_START_SCRIPT, install.STORE_STATUSLINE_SCRIPT],
+    "antigravity-cli": [ownership.STORE_HOOK_SCRIPTS["antigravity-cli"], ownership.STORE_HOOK_SCRIPTS["antigravity-statusline"]],
+  };
+  let home;
+
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), "agenthalo-store-parse-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  // Every command in the tool's config files that runs a store entry script:
+  // the shell command string, or the argv of a process hook.
+  function storeCommands(tool) {
+    const out = [];
+    const visit = (value) => {
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item);
+        return;
+      }
+      if (!value || typeof value !== "object") return;
+      if (typeof value.command === "string" && Array.isArray(value.args)) {
+        out.push({ argv: [value.command, ...value.args] });
+      } else {
+        // Copilot keeps the POSIX command under "bash".
+        for (const key of ["command", "bash"]) {
+          if (typeof value[key] === "string") out.push({ command: value[key] });
+        }
+      }
+      for (const child of Object.values(value)) visit(child);
+    };
+    for (const file of tool.files(home)) {
+      if (!fs.existsSync(file)) continue;
+      const text = fs.readFileSync(file, "utf8");
+      if (file.endsWith(".toml")) {
+        for (const match of text.matchAll(/^\s*command\s*=\s*'''(.*)'''\s*$/gm)) out.push({ command: match[1] });
+      } else {
+        visit(JSON.parse(text));
+      }
+    }
+    return out.filter((entry) => (entry.command || entry.argv.join(" ")).includes(STORE_SCRIPT_PREFIX));
+  }
+
+  // The store build writes no ZCode hooks yet (see "leave ZCode alone" below).
+  for (const tool of [CLAUDE, ...TOOLS.filter((entry) => entry.id !== "zcode")]) {
+    it(`${tool.id}: every store command runs the launcher with a store entry script`, async () => {
+      const scripts = SCRIPTS[tool.id] || [ownership.STORE_HOOK_SCRIPTS[tool.id]];
+      tool.seed(home);
+      await tool.register(home, { storeHooks: true, port: STORE_PORT });
+      const commands = storeCommands(tool);
+      assert.ok(commands.length > 0, "the store build wrote no commands");
+
+      const seen = new Set();
+      for (const entry of commands) {
+        let target;
+        if (entry.argv) {
+          // A process hook: the tool runs argv[0] with the rest as arguments,
+          // and Doctor holds argv[0] to be a Node it can run.
+          target = { nodeBin: entry.argv[0], scriptPath: entry.argv[1] };
+          assert.deepEqual(validateHookTarget(target, { requireAbsoluteNode: true, requireNodeExecutable: true }), {
+            ok: true, ...target,
+          }, entry.argv.join(" "));
+        } else {
+          target = parseHookCommand(entry.command);
+          assert.equal(target.ok, true, entry.command);
+          assert.deepEqual(validateHookCommand(entry.command), {
+            ok: true, nodeBin: target.nodeBin, scriptPath: target.scriptPath,
+          }, entry.command);
+        }
+        assert.equal(target.nodeBin, LAUNCHER, entry.command || entry.argv.join(" "));
+        const script = path.basename(target.scriptPath);
+        assert.equal(target.scriptPath, `${HOOKS_DIR}/${script}`);
+        assert.ok(scripts.includes(script), `${script} is not one of ${scripts.join(", ")}`);
+        seen.add(script);
+      }
+      assert.deepEqual([...seen].sort(), [...scripts].sort(), "every entry script is written");
     });
   }
 });
