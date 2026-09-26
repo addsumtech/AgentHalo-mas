@@ -24,10 +24,10 @@ function matchedByAnyGlob(globs, target) {
   return matched;
 }
 
-// The universal MAS build merges the mac and mas `files` options, and applies
-// their exclusions to node_modules as well as app files.
+// Every include and exclude lives in the top-level `files` list; its
+// exclusions apply to node_modules as well as app files.
 function isPackaged(target) {
-  return matchedByAnyGlob([...pkg.build.files, ...(pkg.build.mas.files || [])], target);
+  return matchedByAnyGlob(pkg.build.files, target);
 }
 
 function readPlistBooleans(relativePath) {
@@ -235,12 +235,25 @@ describe("store package contents", () => {
     assert.strictEqual(isPackaged("src/telegram-native-runner.js"), false);
     assert.strictEqual(isPackaged("pwa/app.js"), false);
     // Production dependencies are copied unless an exclude removes them.
-    const excludes = [...pkg.build.files, ...(pkg.build.mas.files || [])].filter((glob) => glob.startsWith("!"));
+    const excludes = pkg.build.files.filter((glob) => glob.startsWith("!"));
     const dependencyPackaged = (target) => matchedByAnyGlob(["**/*", ...excludes], target);
     assert.strictEqual(dependencyPackaged("node_modules/ws/index.js"), false);
     assert.strictEqual(dependencyPackaged("node_modules/koffi/index.js"), false);
     assert.strictEqual(dependencyPackaged("node_modules/htmlparser2/lib/index.js"), true);
     assert.strictEqual(isPackaged("assets/accessories/cigarette.svg"), false);
+  });
+
+  it("keeps the package contents in the top-level files list only", () => {
+    // A mac, mas or masDev `files` list replaces the top-level one instead of
+    // adding to it, and a list of only excludes then packages the whole
+    // project: the 1.0.4 package shipped test/, scripts/, pwa/, the VS Code
+    // extension and the excluded cigarette art that way.
+    for (const key of ["mac", "mas", "masDev"]) {
+      assert.strictEqual(pkg.build[key] && pkg.build[key].files, undefined, `build.${key}.files must not be set`);
+    }
+    for (const target of ["test/main.test.js", "scripts/build-proc-info.js", "pwa/app.js", "extensions/vscode/extension.js", "docs/PRIVACY.md"]) {
+      assert.strictEqual(isPackaged(target), false, `${target} is not part of the store package`);
+    }
   });
 
   it("ships project window icons, agent session icons and notices", () => {
@@ -300,7 +313,7 @@ describe("store package contents", () => {
   it("pins the reviewed Koffi line but keeps it out of the universal MAS package", () => {
     assert.strictEqual(pkg.dependencies.koffi, "2.16.3");
     assert.strictEqual(pkg.build.afterPack, undefined);
-    const masExcludes = (pkg.build.mas.files || []).filter((glob) => glob.startsWith("!"));
+    const masExcludes = pkg.build.files.filter((glob) => glob.startsWith("!"));
     for (const packaged of [
       "node_modules/koffi",
       "node_modules/koffi/package.json",
@@ -312,7 +325,6 @@ describe("store package contents", () => {
         `${packaged} must be excluded from the MAS package`
       );
     }
-    assert.ok(!masExcludes.some((glob) => minimatch("node_modules/ws/index.js", glob.slice(1))));
     assert.strictEqual(pkg.scripts["audit:native-package"], "node scripts/audit-packaged-native.js");
     assert.strictEqual(pkg.scripts["verify:updater-metadata"], "node scripts/verify-updater-metadata.js");
   });

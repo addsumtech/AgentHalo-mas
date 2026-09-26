@@ -605,6 +605,14 @@ function analyzeRuntimeReachability(options = {}) {
 // uses are understood here; anything else is reported, never guessed at.
 const NODE_MODULES_EXCLUDE_RE = /^!\*\*\/node_modules\/((?:@[^/{}]+\/)?[^/{}]+)\{,\/\*\*\/\*\}$/;
 
+// Packages the store build leaves out on purpose even though reachable code
+// requires them. Every such require sits in try/catch on a path that works
+// without the package, so each entry needs a reviewed reason.
+const REVIEWED_OPTIONAL_DEPENDENCY_EXCLUDES = Object.freeze({
+  koffi: "The universal Mac App Store build cannot merge per-arch Koffi binaries (13f72d2). "
+    + "mac-window.js falls back to Electron's window settings, and the other callers are Windows-only.",
+});
+
 function classifyBuildExcludes(files) {
   const src = [];
   const dependencies = [];
@@ -740,6 +748,7 @@ function verifyBuildExcludes(report, build, matchGlob) {
   const usedClosure = new Set(report.dependencies.usedClosure);
   const requiredBy = report.dependencies.requiredBy;
   for (const { pattern, name } of excludes.dependencies) {
+    if (Object.prototype.hasOwnProperty.call(REVIEWED_OPTIONAL_DEPENDENCY_EXCLUDES, name)) continue;
     if (requiredBy[name]) {
       problems.push(`${pattern} excludes ${name}, which reachable code requires (${requiredBy[name][0]})`);
     } else if (usedClosure.has(name)) {
@@ -801,6 +810,7 @@ function main(argv) {
 }
 
 module.exports = {
+  REVIEWED_OPTIONAL_DEPENDENCY_EXCLUDES,
   analyzeRuntimeReachability,
   classifyBuildExcludes,
   isPackagedByBuildFiles,

@@ -8,6 +8,7 @@ const path = require("node:path");
 const { minimatch } = require("minimatch");
 
 const {
+  REVIEWED_OPTIONAL_DEPENDENCY_EXCLUDES,
   analyzeRuntimeReachability,
   classifyBuildExcludes,
   isPackagedByBuildFiles,
@@ -110,6 +111,10 @@ describe("runtime reachability of the packaged app", () => {
       assert.ok(pkg.dependencies[name], `${name} stays declared`);
     }
     for (const name of report.dependencies.used) {
+      if (REVIEWED_OPTIONAL_DEPENDENCY_EXCLUDES[name]) {
+        assert.ok(excludedDeps.has(name), `${name} is reviewed as left out of the store package`);
+        continue;
+      }
       assert.equal(excludedDeps.has(name), false, `${name} is required at run time`);
     }
     assert.deepEqual(report.dependencies.used, ["dom-serializer", "htmlparser2", "jsonc-parser", "koffi"]);

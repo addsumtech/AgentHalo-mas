@@ -37,7 +37,10 @@ test("the Mac App Store package leaves Koffi out instead of pruning it", () => {
   // succeed there. On macOS Koffi only drives mac-window.js, whose public
   // AppKit calls sit in try/catch.
   assert.equal(pkg.build.afterPack, undefined);
-  assert.ok(pkg.build.mas.files.includes("!**/node_modules/koffi{,/**/*}"));
+  // The exclude lives in the top-level files list: a mas-level list would
+  // replace that list instead of adding to it.
+  assert.ok(pkg.build.files.includes("!**/node_modules/koffi{,/**/*}"));
+  assert.equal(pkg.build.mas.files, undefined);
   assert.equal(pkg.scripts["audit:native-package"], "node scripts/audit-packaged-native.js");
   assert.equal(pkg.scripts["verify:updater-metadata"], "node scripts/verify-updater-metadata.js");
 });

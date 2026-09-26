@@ -163,6 +163,7 @@
       "!**/node_modules/electron-updater{,/**/*}",
       "!**/node_modules/markdown-it{,/**/*}",
       "!**/node_modules/ws{,/**/*}",
+      "!**/node_modules/koffi{,/**/*}",
       "!**/node_modules/@protobufjs/aspromise{,/**/*}",
       "!**/node_modules/@protobufjs/base64{,/**/*}",
       "!**/node_modules/@protobufjs/codegen{,/**/*}",
@@ -252,10 +253,7 @@
       "entitlements": "build/entitlements.mas.plist",
       "entitlementsInherit": "build/entitlements.mas.inherit.plist",
       "hardenedRuntime": false,
-      "artifactName": "AgentHalo-${version}-mas.${ext}",
-      "files": [
-        "!**/node_modules/koffi{,/**/*}"
-      ]
+      "artifactName": "AgentHalo-${version}-mas.${ext}"
     },
     "masDev": {
       "identity": "LI JIE",
