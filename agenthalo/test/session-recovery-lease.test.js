@@ -16,6 +16,10 @@ const {
   pruneRecoveryLeaseFiles,
   cleanupOrphanedLeaseLocks,
   loadActiveRecoveryLeases,
+  scanRecoveryLeases,
+  darwinStartIdentity,
+  parseDarwinLstartUtc,
+  getProcessStartIdentity,
 } = require("../hooks/session-recovery-lease");
 const { restoreSessionsFromRecoveryLeases } = require("../src/session-recovery-loader");
 
@@ -662,5 +666,209 @@ describe("durable session recovery leases", () => {
     });
     assert.deepStrictEqual(restored, ["real-session-2", "real-session-1"]);
     assert.deepStrictEqual(seen, restored);
+  });
+
+  it("names the reason each active lease was passed over", () => {
+    const identities = (value) => (pids) => new Map(pids.filter(Boolean).map((pid) => [pid, value]));
+    writeLeaseRecord("reasons", {
+      processStartIdentity: "linux:original",
+      sourceProcessStartIdentity: "linux:original",
+    });
+    const common = {
+      recoveryDir, now: 2000, platform: "linux", processKill: () => true, isAgentEnabled: () => true,
+    };
+    const reasons = (options) => scanRecoveryLeases({ ...common, ...options }).summary.skipped;
+
+    assert.deepStrictEqual(reasons({ getProcessStartIdentities: identities("linux:original") }), {});
+    assert.deepStrictEqual(reasons({ getProcessStartIdentities: () => new Map() }), { "identity-unavailable": 1 });
+    assert.deepStrictEqual(reasons({ getProcessStartIdentities: identities("linux:reused") }), { "identity-mismatch": 1 });
+    assert.deepStrictEqual(reasons({ isAgentEnabled: () => false }), { "agent-disabled": 1 });
+    assert.deepStrictEqual(reasons({
+      processKill: () => { const err = new Error("dead"); err.code = "ESRCH"; throw err; },
+    }), { "process-gone": 1 });
+
+    writeLeaseRecord("reasons", { processStartIdentity: null, sourceProcessStartIdentity: null });
+    assert.deepStrictEqual(reasons({ getProcessStartIdentities: identities("linux:original") }), { "identity-missing": 1 });
+    writeLeaseRecord("reasons", { eventAt: 1000, validUntil: 5000 });
+    assert.deepStrictEqual(reasons({}), { provisional: 1 });
+    writeLeaseRecord("reasons", { eventAt: 90_000 });
+    assert.deepStrictEqual(reasons({}), { future: 1 });
+    writeLeaseRecord("reasons", {});
+    assert.deepStrictEqual(reasons({ now: 1000 + 25 * 60 * 60 * 1000 }), { expired: 1 });
+  });
+});
+
+describe("macOS process start identities", () => {
+  let recoveryDir;
+
+  beforeEach(() => {
+    recoveryDir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-recovery-darwin-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(recoveryDir, { recursive: true, force: true });
+  });
+
+  // 2026-09-26 18:20:34 UTC, a Saturday.
+  const START = Date.UTC(2026, 8, 26, 18, 20, 34) / 1000;
+
+  // Answers like BSD ps: strftime("%c", localtime(start)) in the locale and
+  // zone of the environment it is given.
+  function fakePs(calls, startByPid) {
+    return (file, args, options) => {
+      calls.push({ file, args, env: options && options.env });
+      const pid = Number(args[args.indexOf("-p") + 1]);
+      const start = startByPid.get(pid);
+      if (!start) throw Object.assign(new Error("no such process"), { status: 1 });
+      const env = (options && options.env) || process.env;
+      if (env.LC_ALL !== "C") return "六  9月/26 18:20:34 2026\n";
+      if (env.TZ !== "UTC") return "Sun Sep 27 02:20:34 2026\n";
+      const date = new Date(start * 1000);
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const pad = (value) => String(value).padStart(2, "0");
+      return `${days[date.getUTCDay()]} ${months[date.getUTCMonth()]} ${String(date.getUTCDate()).padStart(2, " ")} `
+        + `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} ${date.getUTCFullYear()}\n`;
+    };
+  }
+
+  it("formats the start time as whole epoch seconds", () => {
+    assert.strictEqual(darwinStartIdentity(START), `darwin:${START}`);
+    for (const value of [0, -1, 1.5, Number.NaN, "1790", null, undefined]) {
+      assert.strictEqual(darwinStartIdentity(value), null, String(value));
+    }
+  });
+
+  it("reads lstart in the C locale and UTC", () => {
+    assert.strictEqual(parseDarwinLstartUtc("Sat Sep 26 18:20:34 2026"), START);
+    assert.strictEqual(parseDarwinLstartUtc("  Sat Sep 26 18:20:34 2026\n"), START);
+    assert.strictEqual(parseDarwinLstartUtc("Tue Sep  1 23:51:36 2026"), Date.UTC(2026, 8, 1, 23, 51, 36) / 1000);
+    for (const value of ["六  9月/26 18:20:34 2026", "", "Sat Foo 26 18:20:34 2026", "Sat Sep 26 18:20 2026", null]) {
+      assert.strictEqual(parseDarwinLstartUtc(value), null, String(value));
+    }
+  });
+
+  it("asks ps under a pinned locale and zone, whatever the terminal uses", () => {
+    const calls = [];
+    const saved = { LANG: process.env.LANG, LC_ALL: process.env.LC_ALL, TZ: process.env.TZ };
+    Object.assign(process.env, { LANG: "zh_CN.UTF-8", LC_ALL: "zh_CN.UTF-8", TZ: "Asia/Shanghai" });
+    try {
+      const identity = getProcessStartIdentity(4242, {
+        platform: "darwin",
+        execFileSync: fakePs(calls, new Map([[4242, START]])),
+      });
+      assert.strictEqual(identity, `darwin:${START}`);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+    assert.deepStrictEqual(calls.map((call) => [call.file, ...call.args]), [["ps", "-o", "lstart=", "-p", "4242"]]);
+    assert.strictEqual(calls[0].env.LC_ALL, "C");
+    assert.strictEqual(calls[0].env.LANG, "C");
+    assert.strictEqual(calls[0].env.TZ, "UTC");
+    assert.strictEqual(getProcessStartIdentity(4243, { platform: "darwin", execFileSync: fakePs([], new Map()) }), null);
+    assert.strictEqual(
+      getProcessStartIdentity(4242, { platform: "darwin", execFileSync: () => "六  9月/26 18:20:34 2026\n" }),
+      null,
+      "a localized lstart must not become an identity",
+    );
+  });
+
+  it("restores a lease the hook wrote with ps once the store app reads the same start time", () => {
+    const pid = process.pid;
+    const written = updateRecoveryLeaseFromStateBody({
+      agent_id: "claude-code",
+      session_id: "darwin-session",
+      event: "UserPromptSubmit",
+      state: "thinking",
+      agent_pid: pid,
+      source_pid: pid,
+      cwd: "/Users/me/project",
+    }, {
+      recoveryDir,
+      eventAt: 1000,
+      platform: "darwin",
+      execFileSync: fakePs([], new Map([[pid, START]])),
+    });
+    assert.strictEqual(written.written, true);
+    assert.strictEqual(written.record.processStartIdentity, `darwin:${START}`);
+
+    // The sandboxed app reads the kernel start time through the helper.
+    const helperIdentities = (pids) => new Map(pids.filter(Boolean).map((id) => [id, darwinStartIdentity(START)]));
+    const common = { recoveryDir, now: 2000, platform: "darwin", processKill: () => true, isAgentEnabled: () => true };
+    const loaded = scanRecoveryLeases({ ...common, getProcessStartIdentities: helperIdentities });
+    assert.deepStrictEqual(loaded.leases.map((lease) => lease.sessionId), ["darwin-session"]);
+    assert.deepStrictEqual(loaded.summary.skipped, {});
+
+    const restarted = scanRecoveryLeases({
+      ...common,
+      getProcessStartIdentities: (pids) => new Map(pids.filter(Boolean).map((id) => [id, darwinStartIdentity(START + 1)])),
+    });
+    assert.deepStrictEqual(restarted.leases, []);
+    assert.deepStrictEqual(restarted.summary.skipped, { "identity-mismatch": 1 });
+  });
+
+  it("lets a lease written in the old lstart form fail closed without throwing", () => {
+    const filePath = getLeaseFilePath("claude-code", "legacy-session", { recoveryDir });
+    fs.writeFileSync(filePath, JSON.stringify({
+      version: 1,
+      agentId: "claude-code",
+      sessionId: "legacy-session",
+      active: true,
+      state: "working",
+      eventAt: 1000,
+      validUntil: null,
+      pid: process.pid,
+      sourcePid: process.pid,
+      processStartIdentity: "darwin:六  9月/26 18:20:34 2026",
+      sourceProcessStartIdentity: "darwin:Sat Sep 26 18:20:34 2026",
+      cwd: "/Users/me/project",
+      title: null,
+    }));
+    const result = scanRecoveryLeases({
+      recoveryDir,
+      now: 2000,
+      platform: "darwin",
+      processKill: () => true,
+      isAgentEnabled: () => true,
+      getProcessStartIdentities: (pids) => new Map(pids.filter(Boolean).map((id) => [id, darwinStartIdentity(START)])),
+    });
+    assert.deepStrictEqual(result.leases, []);
+    assert.deepStrictEqual(result.summary.skipped, { "identity-legacy": 1 });
+    assert.strictEqual(fs.existsSync(filePath), true, "it ages out after MAX_LEASE_AGE_MS like any lease");
+
+    // The next hook event of a session that outlived the upgrade asks again
+    // instead of carrying the legacy identity forward.
+    const rewritten = updateRecoveryLeaseFromStateBody({
+      agent_id: "claude-code",
+      session_id: "legacy-session",
+      event: "PreToolUse",
+      state: "working",
+      agent_pid: process.pid,
+      source_pid: process.pid,
+      cwd: "/Users/me/project",
+    }, {
+      recoveryDir,
+      eventAt: 1500,
+      platform: "darwin",
+      execFileSync: fakePs([], new Map([[process.pid, START]])),
+    });
+    assert.strictEqual(rewritten.written, true);
+    assert.strictEqual(rewritten.record.processStartIdentity, `darwin:${START}`);
+    assert.strictEqual(rewritten.record.sourceProcessStartIdentity, `darwin:${START}`);
+  });
+
+  it("reads the same identity as the real ps on this Mac under any locale", { skip: process.platform !== "darwin" }, () => {
+    const direct = getProcessStartIdentity(process.pid, { platform: "darwin" });
+    assert.match(direct, /^darwin:\d+$/);
+    const script = `process.stdout.write(String(require(${JSON.stringify(path.join(__dirname, "..", "hooks", "session-recovery-lease"))})`
+      + `.getProcessStartIdentity(${process.pid}, { platform: "darwin" })))`;
+    const localized = require("node:child_process").execFileSync(process.execPath, ["-e", script], {
+      encoding: "utf8",
+      env: { ...process.env, LANG: "zh_CN.UTF-8", LC_ALL: "zh_CN.UTF-8", TZ: "Asia/Shanghai" },
+    });
+    assert.strictEqual(localized, direct);
   });
 });

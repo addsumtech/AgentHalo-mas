@@ -178,7 +178,7 @@ const {
 const { focusCodexThreadTarget } = require("./session-focus-handoff");
 const { focusWebSessionTarget } = require("./web-session-focus");
 const { isSessionInProgress } = require("./state-session-snapshot");
-const { restoreSessionsFromRecoveryLeases } = require("./session-recovery-loader");
+const { recoverSessionsFromLeases, formatRecoverySummary } = require("./session-recovery-loader");
 const { getAllAgents, getAgent } = require("../agents/registry");
 const { getAgentIconUrl } = require("./state-agent-icons");
 // ── Autoplay policy: allow sound playback without user gesture ──
@@ -3623,13 +3623,15 @@ function createWindow() {
   startHttpServer().then((port) => {
     if (port == null) return;
     _syncStoreExchangeFolders();
-    const restoredSessionIds = restoreSessionsFromRecoveryLeases(_state, {
+    const recovery = recoverSessionsFromLeases(_state, {
       ...(process.mas ? storeRecoveryLeaseOptions() : {}),
       isAgentEnabled: (agentId) => (
         _runtimeAgentGate.isAgentEnabled(agentId)
         && _runtimeAgentGate.isAgentIntegrationInstalled(agentId)
       ),
     });
+    const restoredSessionIds = recovery.restored;
+    sessionLog(`startup recovery ${formatRecoverySummary(recovery.summary)}`);
     if (restoredSessionIds.length > 0) {
       const recoveredSnapshot = _state.buildSessionSnapshot();
       reconcilePowerSaveBlocker();

@@ -297,6 +297,36 @@ function getProcessStartIdentities(pids, options = {}) {
   return identities;
 }
 
+// macOS identities are the process start time in whole epoch seconds. The hook
+// reads it from ps (lstart has one-second precision); the sandboxed store app,
+// which cannot run the setuid ps, reads the same kernel field through the
+// bundled proc-info helper (src/mac-proc-info.js). Both must print this form.
+function darwinStartIdentity(startSeconds) {
+  return Number.isSafeInteger(startSeconds) && startSeconds > 0 ? `darwin:${startSeconds}` : null;
+}
+
+// Earlier hooks stored the raw, locale-dependent lstart text ("darwin:Sat Sep
+// 26 18:20:34 2026", "darwin:六  9月/26 18:20:34 2026"), which no reading
+// matches any more.
+function isLegacyDarwinIdentity(value) {
+  return typeof value === "string" && value.startsWith("darwin:") && !/^darwin:\d+$/.test(value);
+}
+
+const LSTART_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// `ps -o lstart=` under LC_ALL=C and TZ=UTC prints strftime's "%c", such as
+// "Sat Sep  6 18:20:34 2026". Any other locale or zone changes the text, so
+// the caller pins both before asking.
+function parseDarwinLstartUtc(value) {
+  const match = /^[A-Z][a-z]{2} +([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/
+    .exec(String(value || "").trim());
+  if (!match) return null;
+  const month = LSTART_MONTHS.indexOf(match[1]);
+  if (month < 0) return null;
+  const ms = Date.UTC(Number(match[6]), month, Number(match[2]), Number(match[3]), Number(match[4]), Number(match[5]));
+  return Number.isFinite(ms) && ms > 0 ? ms / 1000 : null;
+}
+
 function getProcessStartIdentity(pid, options = {}) {
   if (!isPositivePid(pid)) return null;
   const platform = options.platform || process.platform;
@@ -315,8 +345,11 @@ function getProcessStartIdentity(pid, options = {}) {
         encoding: "utf8",
         timeout: 1000,
         windowsHide: true,
+        // The hook runs under the user's terminal locale; a zh_CN lstart
+        // ("六  9月/26 18:20:34 2026") would never match the app's reading.
+        env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" },
       }) || "").trim();
-      return value ? `darwin:${value}` : null;
+      return darwinStartIdentity(parseDarwinLstartUtc(value));
     }
     if (platform === "win32") return getWindowsProcessStartIdentities([pid], options).get(pid) || null;
   } catch {}
@@ -509,12 +542,17 @@ function updateRecoveryLeaseFromStateBody(body, options = {}) {
       ? Math.floor(body.source_pid)
       : (existing && existing.sourcePid) || null;
     if (classified.active && !pid && !sourcePid) return { written: false, reason: "missing-pid" };
+    // A session that outlives an upgrade must not carry a legacy macOS identity
+    // forward; asking again rewrites it in the current form.
     const keptProcessIdentity = (typeof body._agentProcessStartIdentity === "string"
       ? body._agentProcessStartIdentity
-      : null) || (pid && existing && existing.pid === pid ? existing.processStartIdentity : null);
+      : null) || (pid && existing && existing.pid === pid && !isLegacyDarwinIdentity(existing.processStartIdentity)
+      ? existing.processStartIdentity
+      : null);
     const keptSourceIdentity = (typeof body._sourceProcessStartIdentity === "string"
       ? body._sourceProcessStartIdentity
       : null) || (sourcePid && existing && existing.sourcePid === sourcePid
+        && !isLegacyDarwinIdentity(existing.sourceProcessStartIdentity)
       ? existing.sourceProcessStartIdentity
       : null);
     const identityPids = [];
@@ -568,18 +606,42 @@ function updateRecoveryLeaseFromStateBody(body, options = {}) {
   }
 }
 
+// Why a stored start identity does not vouch for the live process. A legacy
+// macOS identity cannot match; its lease fails closed and ages out.
+function identitySkipReason(recorded, current) {
+  if (!current) return "identity-unavailable";
+  if (current === recorded) return null;
+  return isLegacyDarwinIdentity(recorded) ? "identity-legacy" : "identity-mismatch";
+}
+
 function loadActiveRecoveryLeases(options = {}) {
+  return scanRecoveryLeases(options).leases;
+}
+
+// Loads the restorable leases and counts why every other active lease was
+// passed over (summary.skipped, by reason), so the app can log a startup that
+// restores nothing instead of failing silently.
+function scanRecoveryLeases(options = {}) {
+  const summary = { dir: "ok", files: 0, candidates: 0, loaded: 0, skipped: {} };
+  const skip = (reason, count = 1) => {
+    summary.skipped[reason] = (summary.skipped[reason] || 0) + count;
+  };
   const dir = getRecoveryDir(options);
   try {
     const parentStat = fs.lstatSync(path.dirname(dir));
     const dirStat = fs.lstatSync(dir);
-    if (!parentStat.isDirectory() || parentStat.isSymbolicLink()) return [];
-    if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) return [];
+    if (!parentStat.isDirectory() || parentStat.isSymbolicLink()
+      || !dirStat.isDirectory() || dirStat.isSymbolicLink()) {
+      summary.dir = "unsafe";
+      return { leases: [], summary };
+    }
   } catch {
-    return [];
+    summary.dir = "missing";
+    return { leases: [], summary };
   }
   cleanupOrphanedLeaseLocks(dir, options);
   const names = pruneRecoveryLeaseFiles(dir, { now: options.now });
+  summary.files = names.length;
   const now = Number.isFinite(options.now) ? options.now : Date.now();
   const maxAgeMs = Number.isFinite(options.maxAgeMs) && options.maxAgeMs > 0
     ? options.maxAgeMs
@@ -596,14 +658,23 @@ function loadActiveRecoveryLeases(options = {}) {
   for (const name of names) {
     const filePath = path.join(dir, name);
     const record = readLeaseFile(filePath);
-    if (!record || !record.active || !SUSTAINED_STATES.has(record.state)) continue;
-    if (record.eventAt > now + 60_000) continue;
+    if (!record) {
+      skip("unreadable");
+      continue;
+    }
+    if (!record.active || !SUSTAINED_STATES.has(record.state)) continue;
+    summary.candidates += 1;
+    if (record.eventAt > now + 60_000) {
+      skip("future");
+      continue;
+    }
     if (now - record.eventAt > maxAgeMs) {
       const lock = acquireLeaseLock(filePath);
       try {
         const current = lock ? readLeaseFile(filePath) : null;
         if (current && current.active && now - current.eventAt > maxAgeMs) fs.unlinkSync(filePath);
       } catch {} finally { releaseLeaseLock(lock); }
+      skip("expired");
       continue;
     }
     // A quiet-window Stop is provisional rather than durable evidence. The
@@ -620,9 +691,13 @@ function loadActiveRecoveryLeases(options = {}) {
           }
         } catch {} finally { releaseLeaseLock(lock); }
       }
+      skip("provisional");
       continue;
     }
-    if (!isAgentEnabled(record.agentId)) continue;
+    if (!isAgentEnabled(record.agentId)) {
+      skip("agent-disabled");
+      continue;
+    }
     if ((record.pid && !processAlive(record.pid, options))
       || (record.sourcePid && !processAlive(record.sourcePid, options))) {
       const lock = acquireLeaseLock(filePath);
@@ -633,24 +708,32 @@ function loadActiveRecoveryLeases(options = {}) {
           || (current.sourcePid && !processAlive(current.sourcePid, options))
         )) fs.unlinkSync(filePath);
       } catch {} finally { releaseLeaseLock(lock); }
+      skip("process-gone");
       continue;
     }
     if (requireStartIdentity && (
       (record.pid && !record.processStartIdentity)
       || (record.sourcePid && !record.sourceProcessStartIdentity)
-    )) continue;
-    if (record.processStartIdentity) {
-      const current = currentIdentities.get(record.pid);
-      if (!current || current !== record.processStartIdentity) continue;
+    )) {
+      skip("identity-missing");
+      continue;
     }
-    if (record.sourceProcessStartIdentity) {
-      const current = currentIdentities.get(record.sourcePid);
-      if (!current || current !== record.sourceProcessStartIdentity) continue;
+    const identityReason = (record.processStartIdentity
+      && identitySkipReason(record.processStartIdentity, currentIdentities.get(record.pid)))
+      || (record.sourceProcessStartIdentity
+        && identitySkipReason(record.sourceProcessStartIdentity, currentIdentities.get(record.sourcePid)));
+    if (identityReason) {
+      skip(identityReason);
+      continue;
     }
     leases.push(record);
   }
-  if (leases.length > MAX_LEASE_FILES) return [];
-  return leases.sort((a, b) => b.eventAt - a.eventAt);
+  if (leases.length > MAX_LEASE_FILES) {
+    skip("over-capacity", leases.length);
+    return { leases: [], summary };
+  }
+  summary.loaded = leases.length;
+  return { leases: leases.sort((a, b) => b.eventAt - a.eventAt), summary };
 }
 
 module.exports = {
@@ -664,6 +747,8 @@ module.exports = {
   SUPPORTED_AGENT_IDS,
   getRecoveryDir,
   getLeaseFilePath,
+  darwinStartIdentity,
+  parseDarwinLstartUtc,
   getProcessStartIdentity,
   getProcessStartIdentities,
   readLeaseFile,
@@ -672,4 +757,5 @@ module.exports = {
   pruneRecoveryLeaseFiles,
   cleanupOrphanedLeaseLocks,
   loadActiveRecoveryLeases,
+  scanRecoveryLeases,
 };
