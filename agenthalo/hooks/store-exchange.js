@@ -86,6 +86,35 @@ function toolExchangeDir(agentId, options = {}) {
   return dir ? path.join(dir, EXCHANGE_DIR_NAME) : null;
 }
 
+// Hook side: the exchange folder of a tool the store app has connected, or
+// null. The app creates the folder (with runtime.json) when the tool connects
+// and removes all of it on disconnect, while hooks of sessions started before
+// that keep running until those sessions end. So a hook never creates the
+// folder: it writes only into one that holds the app's runtime.json or one of
+// options.markers (files hooks wrote there before, which stay while the app is
+// quit).
+function connectedToolExchangeDir(agentId, options = {}) {
+  const dir = toolExchangeDir(agentId, options);
+  if (!dir) return null;
+  const fsModule = options.fs || fs;
+  try {
+    const stat = fsModule.lstatSync(dir);
+    if (!stat.isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  const names = ["runtime.json", ...(Array.isArray(options.markers) ? options.markers : [])];
+  const present = names.some((name) => {
+    try {
+      fsModule.lstatSync(path.join(dir, name));
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  return present ? dir : null;
+}
+
 // Hook side: every exchange folder the store app may have written, the
 // tools' environment overrides first. A hook does not need to know which
 // tool it serves: the app writes the same runtime file into each authorized
@@ -151,6 +180,7 @@ module.exports = {
   isStoreHook,
   toolConfigDir,
   toolExchangeDir,
+  connectedToolExchangeDir,
   hookExchangeDirs,
   authorizedToolDir,
   authorizedExchangeDir,

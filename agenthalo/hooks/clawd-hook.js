@@ -5,11 +5,13 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
+const path = require("path");
 const { postStateToRunningServer, readHostPrefix, resolveWslDistro } = require("./server-config");
 const { fitStateBodyToByteBudget } = require("./state-payload-size");
 const { extractClaudeContextUsageFromEntries } = require("./context-usage");
 const { createPidResolver, readStdinJsonDetailed, getPlatformConfig, applyOrcaPaneKey } = require("./shared-process");
-const { updateRecoveryLeaseFromStateBody } = require("./session-recovery-lease");
+const { LEASE_DIR_NAME, updateRecoveryLeaseFromStateBody } = require("./session-recovery-lease");
+const storeExchange = require("./store-exchange");
 // #634: the pid cache + lifecycle orchestration is owned by the shared resolver
 // now (hooks/shared-process.js); this adapter no longer touches pid-cache,
 // processAlive, or isWin directly.
@@ -787,6 +789,17 @@ function attachStdinDiag(body, stdinRead) {
   return body;
 }
 
+// Where this hook keeps its recovery lease, or null for nowhere. Store hooks
+// (AGENTHALO_STORE_HOOK) keep it in the exchange folder the app maintains in
+// the authorized Claude folder only while Claude Code is connected; after a
+// disconnect removed that folder, sessions started earlier still run this
+// hook and must not recreate it.
+function recoveryLeaseOptions(env = process.env) {
+  if (!storeExchange.isStoreHook(env)) return {};
+  const dir = storeExchange.connectedToolExchangeDir("claude-code", { env, markers: [LEASE_DIR_NAME] });
+  return dir ? { recoveryDir: path.join(dir, LEASE_DIR_NAME) } : null;
+}
+
 function main() {
   const event = process.argv[2];
   if (!EVENT_TO_STATE[event]) process.exit(0);
@@ -829,7 +842,8 @@ function main() {
       // the HTTP request may fail but the next process can still recover the
       // same session id and last sustained state. This is best-effort and never
       // changes the hook's stdout or exit contract.
-      updateRecoveryLeaseFromStateBody(body, { eventAt });
+      const leaseOptions = recoveryLeaseOptions();
+      if (leaseOptions) updateRecoveryLeaseFromStateBody(body, { eventAt, ...leaseOptions });
       postStateToRunningServer(
         JSON.stringify(fitted.body),
         { timeoutMs: statePostTimeoutMs },
@@ -842,6 +856,8 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+  main,
+  recoveryLeaseOptions,
   buildStateBody,
   classifyTestResult,
   isRecognizedTestCommand,

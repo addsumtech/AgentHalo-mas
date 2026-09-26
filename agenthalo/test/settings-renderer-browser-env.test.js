@@ -13002,6 +13002,56 @@ describe("settings renderer browser environment", () => {
     assert.notStrictEqual(toasts[0].options.error, true);
   });
 
+  it("disconnects Claude Code through the same integration uninstall as every other row", async () => {
+    const calls = [];
+    const modals = [];
+    const harness = loadAgentsTabForTest({
+      snapshot: {
+        manageClaudeHooksAutomatically: true,
+        agents: {
+          "claude-code": { integrationInstalled: true, enabled: true },
+        },
+      },
+      agentMetadata: [
+        { id: "claude-code", name: "Claude Code", eventSource: "hook", capabilities: {} },
+      ],
+      settingsAPI: {
+        command: (action, payload) => {
+          calls.push([action, payload]);
+          return Promise.resolve({ status: "ok" });
+        },
+        update: (key, value) => {
+          calls.push(["update", key, value]);
+          return Promise.resolve({ status: "ok" });
+        },
+      },
+    });
+    harness.core.helpers.showSettingsConfirmModal = (config) => {
+      modals.push(config.title);
+      return Promise.resolve("disconnect");
+    };
+
+    harness.core.ops.requestRender({ content: true });
+    harness.content.querySelector(".agent-integration-action").dispatchEvent({ type: "click", bubbles: false });
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+
+    assert.deepStrictEqual(modals, ["claudeHooksDisconnectConfirmTitle"]);
+    // uninstallAgentIntegration commits integrationInstalled:false and
+    // enabled:false, so the row reads Connect with its switch off. The old
+    // uninstallHooks command only turned automatic management off.
+    assert.strictEqual(JSON.stringify(calls), JSON.stringify([["uninstallAgentIntegration", { agentId: "claude-code" }]]));
+  });
+
+  it("disconnects Claude Code before turning automatic management off", async () => {
+    const source = fs.readFileSync(path.join(SRC_DIR, "settings-tab-agents.js"), "utf8");
+    const disableBranch = source.slice(
+      source.indexOf("function confirmDisableClaudeHookManagement"),
+      source.indexOf("function runDisconnectClaudeHooks")
+    );
+    assert.ok(disableBranch.includes("disconnectClaudeIntegration().then("));
+    assert.ok(!source.includes('command("uninstallHooks")'), "no Claude disconnect path may leave the integration marked connected");
+  });
+
   it("renders cleanup hint banners only from explicit negative entries, not absent default agents", () => {
     const harness = loadAgentsTabForTest({
       snapshot: {

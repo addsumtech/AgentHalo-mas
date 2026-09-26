@@ -289,22 +289,75 @@ describe("exchange folders follow the connected tools", () => {
     fs.writeFileSync(path.join(dir, recoveryLease.LEASE_DIR_NAME, "session-recovery-v1-x.json"), "{}");
   }
 
-  it("clears only what AgentHalo keeps in a folder", () => {
+  it("removes the whole agenthalo folder and nothing next to it", () => {
     const dir = exchange(".claude");
+    fs.writeFileSync(path.join(home, ".claude", "settings.json"), "{}");
     fillExchange(dir);
     assert.equal(clearExchangeDir(dir), true);
     assert.equal(fs.existsSync(dir), false);
 
+    // Whatever else ended up inside goes too, including a runtime.json whose
+    // owner is some other process: the folder is AgentHalo's alone.
     fillExchange(dir);
-    fs.writeFileSync(path.join(dir, "notes.txt"), "the user's");
-    assert.equal(clearExchangeDir(dir), false, "a folder with other files stays");
-    assert.deepEqual(fs.readdirSync(dir), ["notes.txt"]);
-
+    fs.writeFileSync(path.join(dir, "notes.txt"), "stray");
     serverConfig.writeRuntimeConfig(23334, { runtimeConfigPath: path.join(dir, "runtime.json"), ownerPid: 999999 });
-    clearExchangeDir(dir);
-    assert.ok(fs.existsSync(path.join(dir, "runtime.json")), "another instance's runtime.json stays");
+    assert.equal(clearExchangeDir(dir), true);
+    assert.equal(fs.existsSync(dir), false);
+    assert.equal(clearExchangeDir(dir), true, "an absent folder is already clear");
+
     assert.equal(clearExchangeDir(path.join(home, ".claude")), false, "only an agenthalo folder is touched");
-    assert.ok(fs.existsSync(path.join(home, ".claude")));
+    assert.deepEqual(fs.readdirSync(path.join(home, ".claude")), ["settings.json"]);
+  });
+
+  it("removes a symlink named agenthalo without following it", () => {
+    const target = path.join(root, "elsewhere");
+    fs.mkdirSync(target, { recursive: true });
+    fs.writeFileSync(path.join(target, "keep.txt"), "x");
+    fs.symlinkSync(target, exchange(".claude"));
+    assert.equal(clearExchangeDir(exchange(".claude")), true);
+    assert.equal(fs.existsSync(exchange(".claude")), false);
+    assert.ok(fs.existsSync(path.join(target, "keep.txt")));
+  });
+
+  it("sweeps a disconnected folder again after hooks that were already running", () => {
+    const connected = new Set(["claude-code"]);
+    const timers = [];
+    const folders = createStoreExchangeFolders({
+      userDataDir,
+      isConnected: (agentId) => connected.has(agentId),
+      isAuthoritative: () => true,
+      setTimeout: (fn, ms) => { timers.push({ fn, ms }); return { unref() {} }; },
+    });
+    folders.sync();
+    fillExchange(exchange(".claude"));
+    connected.delete("claude-code");
+    folders.sync();
+    assert.equal(fs.existsSync(exchange(".claude")), false);
+    assert.equal(timers.length, 1);
+    assert.ok(timers[0].ms > 0);
+
+    // A hook that passed its check just before the folder went writes a lease.
+    const leaseDir = path.join(exchange(".claude"), recoveryLease.LEASE_DIR_NAME);
+    fs.mkdirSync(leaseDir, { recursive: true });
+    fs.writeFileSync(path.join(leaseDir, "late.json"), "{}");
+    timers[0].fn();
+    assert.equal(fs.existsSync(exchange(".claude")), false);
+
+    // A tool connected again before the sweep keeps its folder.
+    fillExchange(exchange(".codex"));
+    connected.add("codex");
+    const reconnect = createStoreExchangeFolders({
+      userDataDir,
+      isConnected: (agentId) => connected.has(agentId),
+      isAuthoritative: () => true,
+      setTimeout: (fn, ms) => { timers.push({ fn, ms }); return null; },
+    });
+    connected.delete("codex");
+    reconnect.sync();
+    connected.add("codex");
+    fillExchange(exchange(".codex"));
+    timers[timers.length - 1].fn();
+    assert.ok(fs.existsSync(path.join(exchange(".codex"), "runtime.json")));
   });
 
   it("writes to connected tools only and clears a tool once it is disconnected", () => {
@@ -330,6 +383,66 @@ describe("exchange folders follow the connected tools", () => {
     assert.equal(fs.existsSync(exchange(".claude")), false);
     assert.deepEqual(folders.dirs(), [exchange(".codex")]);
     assert.equal(folders.dirFor("codex"), exchange(".codex"));
+  });
+
+  it("disconnecting Claude Code in Settings removes its folder and stops writing there", async () => {
+    const { createSettingsController } = require("../src/settings-controller");
+    const prefs = require("../src/prefs");
+    const { isAgentIntegrationInstalled } = require("../src/agent-gate");
+    const defaults = prefs.getDefaults();
+    const uninstalled = [];
+    const ctrl = createSettingsController({
+      prefsPath: path.join(root, "prefs.json"),
+      loadResult: {
+        snapshot: {
+          ...defaults,
+          agents: {
+            ...defaults.agents,
+            "claude-code": { ...defaults.agents["claude-code"], integrationInstalled: true, enabled: true },
+            codex: { ...defaults.agents.codex, integrationInstalled: false, enabled: false },
+          },
+        },
+        locked: false,
+      },
+      injectedDeps: {
+        uninstallIntegrationForAgent: async (agentId) => {
+          uninstalled.push(agentId);
+          return { status: "ok", removed: 14, changed: true };
+        },
+        stopIntegrationForAgent: () => true,
+        writeCodexAutoStartGate: () => true,
+      },
+    });
+    // What main.js wires up in the store build.
+    const folders = createStoreExchangeFolders({
+      userDataDir,
+      isConnected: (agentId) => isAgentIntegrationInstalled(ctrl.getSnapshot(), agentId),
+      isAuthoritative: () => true,
+      refreshRuntimeConfig: () => serverConfig.writeRuntimeConfig(23334, {
+        runtimeConfigPath: path.join(root, "container", ".clawd", "runtime.json"),
+        ownerPid: process.pid,
+        mirrorDirs: folders.dirs(),
+      }),
+      setTimeout: () => null,
+    });
+    ctrl.subscribeKey("agents", () => folders.sync());
+    folders.sync();
+    fillExchange(exchange(".claude"));
+    assert.ok(fs.existsSync(path.join(exchange(".claude"), "runtime.json")));
+
+    const result = await ctrl.applyCommand("uninstallAgentIntegration", { agentId: "claude-code" });
+    assert.equal(result.status, "ok");
+    assert.deepEqual(uninstalled, ["claude-code"]);
+    const entry = ctrl.getSnapshot().agents["claude-code"];
+    assert.equal(entry.integrationInstalled, false, "the row reads Connect again");
+    assert.equal(entry.enabled, false, "and its switch is off");
+    assert.equal(fs.existsSync(exchange(".claude")), false, "the whole agenthalo folder is gone");
+
+    // Later syncs (another setting changing, a runtime refresh) leave it gone.
+    await ctrl.applyCommand("setAgentFlag", { agentId: "claude-code", flag: "permissionsEnabled", value: false });
+    folders.sync();
+    assert.equal(fs.existsSync(exchange(".claude")), false);
+    assert.deepEqual(fs.readdirSync(path.join(home, ".claude")), []);
   });
 
   it("touches nothing while the preferences cannot say what is connected", () => {

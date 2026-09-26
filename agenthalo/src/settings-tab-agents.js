@@ -1101,11 +1101,25 @@
     });
   }
 
+  // Disconnecting Claude Code is the same integration uninstall every other
+  // row's Disconnect runs: it removes AgentHalo's hooks (and, in the store
+  // build, the agenthalo exchange folder) and marks the integration not
+  // installed and not enabled, so the row shows Connect with its switch off.
+  function disconnectClaudeIntegration() {
+    return window.settingsAPI.command("uninstallAgentIntegration", { agentId: "claude-code" });
+  }
+
   function confirmDisableClaudeHookManagement(nextRaw) {
     if (nextRaw) return window.settingsAPI.update("manageClaudeHooksAutomatically", true);
     return showClaudeHooksDisableConfirmModal().then((actionId) => {
       if (!actionId || actionId === "keep") return { status: "ok", noop: true };
-      if (actionId === "disconnect") return window.settingsAPI.command("uninstallHooks");
+      if (actionId === "disconnect") {
+        return disconnectClaudeIntegration().then((result) => (
+          result && result.status === "ok"
+            ? window.settingsAPI.update("manageClaudeHooksAutomatically", false)
+            : result
+        ));
+      }
       return window.settingsAPI.update("manageClaudeHooksAutomatically", false);
     });
   }
@@ -1116,7 +1130,7 @@
     }
     return showClaudeHooksDisconnectConfirmModal().then((actionId) => {
       if (actionId !== "disconnect") return { status: "ok", noop: true };
-      return window.settingsAPI.command("uninstallHooks");
+      return disconnectClaudeIntegration();
     });
   }
 
