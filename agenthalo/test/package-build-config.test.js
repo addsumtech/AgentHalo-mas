@@ -49,8 +49,13 @@ describe("Mac App Store configuration", () => {
     }
     // Naming the target on the command line drops build.mac.target's arch, so
     // without --universal electron-builder packages only the host architecture.
+    // The proc-info helper it bundles is compiled first.
     for (const script of ["build", "build:mac", "build:mas"]) {
-      assert.strictEqual(pkg.scripts[script], "electron-builder --mac mas --universal", script);
+      assert.strictEqual(
+        pkg.scripts[script],
+        "node scripts/build-proc-info.js && electron-builder --mac mas --universal",
+        script,
+      );
     }
     // build:mas-dev only signs a local test copy; it never produces a package.
     const buildScripts = Object.keys(pkg.scripts).filter((name) => /^build(?::|$)/.test(name));
@@ -73,7 +78,10 @@ describe("Mac App Store configuration", () => {
   });
 
   it("builds a universal development copy with a development certificate and a local profile", () => {
-    assert.strictEqual(pkg.scripts["build:mas-dev"], "electron-builder --mac mas-dev --universal");
+    assert.strictEqual(
+      pkg.scripts["build:mas-dev"],
+      "node scripts/build-proc-info.js && electron-builder --mac mas-dev --universal",
+    );
     const masDev = pkg.build.masDev;
     // mas-dev inherits every mas option, so the distribution identity and
     // profile have to be replaced. An "Apple Development" certificate carries
@@ -133,7 +141,36 @@ describe("Mac App Store configuration", () => {
 
   it("updates only through the Mac App Store", () => {
     assert.deepStrictEqual(pkg.build.publish, []);
-    assert.deepStrictEqual(pkg.build.extraResources, []);
+    // The only extra resource is the proc-info helper, never an updater file.
+    assert.deepStrictEqual(pkg.build.extraResources.map((entry) => entry.to), ["bin/proc-info"]);
+  });
+
+  it("bundles the proc-info helper the sandbox runs instead of the setuid ps", () => {
+    // The App Sandbox refuses to exec /bin/ps (setuid root). electron-builder
+    // copies the compiled helper to Contents/Resources/bin, where
+    // src/mac-proc-info.js looks for it, and signs it with the inherit
+    // entitlements like every other nested executable. @electron/osx-sign
+    // signs deeper files first, so the helper must sit deeper than
+    // Contents/MacOS/AgentHalo: codesign refuses to sign that executable while
+    // an unsigned helper sits beside it.
+    assert.deepStrictEqual(pkg.build.extraResources, [
+      { from: "native/proc-info/build/proc-info", to: "bin/proc-info" },
+    ]);
+    assert.strictEqual(pkg.build.extraFiles, undefined);
+    for (const platform of ["mac", "mas", "masDev"]) {
+      assert.strictEqual(pkg.build[platform].extraFiles, undefined, `${platform} should not add extraFiles`);
+    }
+    assert.strictEqual(pkg.scripts["compile:proc-info"], "node scripts/build-proc-info.js");
+    assert.ok(fs.existsSync(path.join(ROOT, "native", "proc-info", "proc-info.c")));
+    const buildScript = fs.readFileSync(path.join(ROOT, "scripts", "build-proc-info.js"), "utf8");
+    assert.match(buildScript, /const ARCHS = \["arm64", "x86_64"\];/, "one universal binary serves both slices");
+    assert.match(buildScript, /native", "proc-info", "build", "proc-info"/);
+    // The compiled binary is a build product, never committed.
+    const ignore = fs.readFileSync(path.join(ROOT, ".gitignore"), "utf8");
+    assert.match(ignore, /^\/native\/proc-info\/build\/$/m);
+    assert.strictEqual(isPackaged("native/proc-info/build/proc-info"), false, "the helper stays out of app.asar");
+    // The app looks for it in <process.resourcesPath>/bin.
+    assert.strictEqual(pkg.build.extraResources[0].to, `bin/${require("../src/mac-proc-info").HELPER_NAME}`);
   });
 
   it("links About to the privacy and support pages published from this repository", () => {

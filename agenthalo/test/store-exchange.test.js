@@ -251,6 +251,12 @@ describe("Claude recovery leases in the store build", () => {
     const main = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
     assert.match(main, /\.\.\.\(process\.mas \? storeRecoveryLeaseOptions\(\) : \{\}\)/);
     assert.match(main, /dirFor\("claude-code"\)[\s\S]{0,200}LEASE_DIR_NAME/);
+    // The sandbox cannot run the setuid ps, so the helper vouches for the
+    // processes behind each lease.
+    assert.match(
+      main,
+      /function storeRecoveryLeaseOptions\(\) \{[\s\S]{0,600}require\("\.\/mac-proc-info"\)\.getProcessStartIdentities\(pids\)/
+    );
   });
 });
 

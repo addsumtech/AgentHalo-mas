@@ -5,8 +5,8 @@
   "main": "src/main.js",
   "scripts": {
     "start": "node launch.js",
-    "build": "electron-builder --mac mas --universal",
-    "build:mac": "electron-builder --mac mas --universal",
+    "build": "node scripts/build-proc-info.js && electron-builder --mac mas --universal",
+    "build:mac": "node scripts/build-proc-info.js && electron-builder --mac mas --universal",
     "verify:electron": "node scripts/verify-electron-install.js",
     "postinstall": "node scripts/verify-electron-install.js --context postinstall",
     "test": "node test/run-tests.js",
@@ -57,8 +57,9 @@
     "uninstall:dsh": "node hooks/dsh-install.js --uninstall",
     "cleanup:integrations": "node hooks/cleanup-integrations.js --apply",
     "register-protocol:dev": "node launch.js --register-protocol",
-    "build:mas": "electron-builder --mac mas --universal",
-    "build:mas-dev": "electron-builder --mac mas-dev --universal"
+    "build:mas": "node scripts/build-proc-info.js && electron-builder --mac mas --universal",
+    "build:mas-dev": "node scripts/build-proc-info.js && electron-builder --mac mas-dev --universal",
+    "compile:proc-info": "node scripts/build-proc-info.js"
   },
   "keywords": [
     "agenthalo",
@@ -237,7 +238,12 @@
       "themes/**/*",
       "node_modules/jsonc-parser/**/*"
     ],
-    "extraResources": [],
+    "extraResources": [
+      {
+        "from": "native/proc-info/build/proc-info",
+        "to": "bin/proc-info"
+      }
+    ],
     "publish": [],
     "mas": {
       "type": "distribution",

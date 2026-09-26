@@ -8,6 +8,7 @@ const crypto = require("crypto");
 const path = require("path");
 const { execFile, spawn } = require("child_process");
 const { normalizeBundleId } = require("../hooks/shared-process");
+const macProcInfo = require("./mac-proc-info");
 
 // Mac App Store build: the sandbox blocks ps, AppleScript and the terminal
 // CLIs the other focus paths rely on, so a click activates the app the store
@@ -25,6 +26,17 @@ function activateMacAppByBundleId(bundleId, execFileFn = execFile, onError = nul
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
 const isLinux = process.platform === "linux";
+
+// `ps -o <columns> -p <pids>`. The App Sandbox refuses to exec the setuid
+// /bin/ps, so the store build asks the bundled proc-info helper, which prints
+// the same pid/ppid/tty/comm columns (src/mac-proc-info.js).
+function execPs(columns, pids, options, callback) {
+  if (isMac && process.mas === true) {
+    macProcInfo.execPsColumns(columns, pids, { ...options, execFile }, callback);
+    return;
+  }
+  execFile("ps", ["-o", columns, "-p", pids.join(",")], options, callback);
+}
 
 // ── Mac-only: Superset workspace deep-link helpers ──────────────────────────
 // Superset.app is a multi-workspace Electron host. The generic
@@ -1598,7 +1610,7 @@ function findCmuxPanelMatchInSessionFiles(cmuxDir, ttyName) {
 
 function scheduleITermTabFocus(sourcePid, pidChain) {
   if (!isMac || !sourcePid || !Array.isArray(pidChain) || !pidChain.length) return;
-  execFile("ps", ["-o", "comm=", "-p", String(sourcePid)], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
+  execPs("comm=", [sourcePid], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
     if (err) return;
     const name = path.basename(stdout.trim()).toLowerCase();
     if (name !== "iterm2") return;
@@ -1608,8 +1620,7 @@ function scheduleITermTabFocus(sourcePid, pidChain) {
     const candidates = pidChain.filter(p => Number.isFinite(p) && p > 0 && p !== sourcePid);
     if (!candidates.length) return;
 
-    const pidsArg = candidates.slice(0, 8).join(",");
-    execFile("ps", ["-o", "pid=,tty=", "-p", pidsArg], { encoding: "utf8", timeout: 500 }, (psErr, psOut) => {
+    execPs("pid=,tty=", candidates.slice(0, 8), { encoding: "utf8", timeout: 500 }, (psErr, psOut) => {
       if (psErr || !psOut) return;
       const ttyName = findFirstValidTty(psOut);
       if (!ttyName) return;
@@ -1678,8 +1689,8 @@ function scheduleTmuxPaneFocus(pidChain, tmuxSocket, tmuxClient) {
   const tmuxClientTarget = normalizeTmuxClient(tmuxClient);
   const clientArgs = tmuxClientTarget ? ["-c", tmuxClientTarget] : [];
 
-  const pidsArg = candidates.slice(0, 8).join(",");
-  execFile("ps", ["-o", "pid=,comm=", "-p", pidsArg], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
+  const psPids = candidates.slice(0, 8);
+  execPs("pid=,comm=", psPids, { encoding: "utf8", timeout: 500 }, (err, stdout) => {
     if (err || !stdout) return;
     const tmuxPids = new Set();
     for (const line of stdout.trim().split("\n")) {
@@ -1730,8 +1741,8 @@ function scheduleCmuxWorkspaceSwitch(pidChain) {
   const pids = pidChain.filter(p => Number.isFinite(p) && p > 0);
   if (!pids.length) return;
 
-  const pidsArg = pids.slice(0, 8).join(",");
-  execFile("ps", ["-o", "comm=", "-p", pidsArg], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
+  const psPids = pids.slice(0, 8);
+  execPs("comm=", psPids, { encoding: "utf8", timeout: 500 }, (err, stdout) => {
     if (err || !stdout) return;
     let hasCmux = false;
     for (const line of stdout.trim().split("\n")) {
@@ -1746,7 +1757,7 @@ function scheduleCmuxWorkspaceSwitch(pidChain) {
       const resolvedAppPath = (!mdfindErr && appPath.trim()) ? appPath.trim().split("\n")[0] : cmuxAppPath;
       const cmuxBin = buildCmuxBinPath(resolvedAppPath);
 
-      execFile("ps", ["-o", "pid=,tty=", "-p", pidsArg], { encoding: "utf8", timeout: 500 }, (psErr, psOut) => {
+      execPs("pid=,tty=", psPids, { encoding: "utf8", timeout: 500 }, (psErr, psOut) => {
         if (psErr || !psOut) { logFocusResult("branch=cmux reason=cmux-no-tty"); return; }
         const ttyName = findFirstValidTty(psOut);
         if (!ttyName) { logFocusResult("branch=cmux reason=cmux-no-tty"); return; }
@@ -1928,7 +1939,7 @@ function scheduleSupersetFocus(sourcePid, cwd) {
   // Superset (e.g. a worktree opened in VS Code / Cursor / iTerm2) would
   // pull Superset to the front and steal focus from the real source.
   if (!isMac || !sourcePid || !cwd) return;
-  execFile("ps", ["-o", "comm=", "-p", String(sourcePid)], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
+  execPs("comm=", [sourcePid], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
     if (err) return;
     // Superset bundles exec at /Applications/Superset.app/Contents/MacOS/Superset,
     // so path.basename of the comm is "Superset" for every Superset-hosted
@@ -1962,7 +1973,7 @@ function scheduleGhosttyFocus(sourcePid, cwd, pidChain, ghosttyTerminalId = null
   // match before falling back to cwd. `focus` selects the surface and raises
   // its window, so no separate System Events activate is needed.
   if (!isMac || !sourcePid || (!cwd && !ghosttyTerminalId)) return;
-  execFile("ps", ["-o", "comm=", "-p", String(sourcePid)], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
+  execPs("comm=", [sourcePid], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
     if (err) {
       logGhosttyFocusResult("source-lookup-failed");
       return;
@@ -2063,8 +2074,7 @@ function scheduleGhosttyFocus(sourcePid, cwd, pidChain, ghosttyTerminalId = null
         return;
       }
 
-      const pidsArg = pidCandidates.join(",");
-      execFile("ps", ["-o", "pid=,tty=", "-p", pidsArg], { encoding: "utf8", timeout: 500 }, (psErr, psOut) => {
+      execPs("pid=,tty=", pidCandidates, { encoding: "utf8", timeout: 500 }, (psErr, psOut) => {
         if (psErr || !psOut) logGhosttyFocusResult("tty-lookup-failed");
         const ttyName = psErr || !psOut ? null : findFirstValidTty(psOut);
         runPreciseOrFallback(ttyName);
@@ -2089,7 +2099,11 @@ function captureGhosttyTerminalId(sourcePidOrRequest, callback) {
   const request = normalizeFocusRequest(sourcePidOrRequest);
   const done = typeof callback === "function" ? callback : () => {};
   if (!isMac || !request.sourcePid) return false;
-  execFile("ps", ["-o", "comm=", "-p", String(request.sourcePid)], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
+  // Store build: a click focuses the app the hook reported, and the sandbox
+  // blocks the AppleScript that reads Ghostty's terminal id, so the id would
+  // be neither readable nor used.
+  if (process.mas === true) return false;
+  execPs("comm=", [request.sourcePid], { encoding: "utf8", timeout: 500 }, (err, stdout) => {
     if (err) return done(null);
     const name = path.basename(stdout.trim()).toLowerCase();
     if (name !== "ghostty") return done(null);
@@ -2199,7 +2213,7 @@ function extractMacAppBundlePath(commPath) {
 }
 
 function resolveMacAppBundle(pidCandidates, callback) {
-  execFile("ps", ["-o", "pid=,comm=", "-p", pidCandidates.join(",")], { encoding: "utf8", timeout: 1000 }, (_err, stdout) => {
+  execPs("pid=,comm=", pidCandidates, { encoding: "utf8", timeout: 1000 }, (_err, stdout) => {
     // ps exits non-zero when any pid in the list is already gone but still
     // prints the live rows, so parse stdout regardless of the exit code.
     const commByPid = new Map();
@@ -2249,7 +2263,7 @@ function focusAppleTerminalTab(request, callback) {
     callback(false);
     return;
   }
-  execFile("ps", ["-o", "pid=,tty=", "-p", candidates.join(",")], { encoding: "utf8", timeout: 1000 }, (_err, stdout) => {
+  execPs("pid=,tty=", candidates, { encoding: "utf8", timeout: 1000 }, (_err, stdout) => {
     // BSD ps can return partial output when a transient hook process is gone.
     // Preserve the agent-to-parent order, rather than ps's numeric PID order.
     const ttyByPid = new Map();

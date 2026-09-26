@@ -2660,10 +2660,16 @@ agentRuntime = createAgentRuntimeMain({
 });
 
 // Store build: Claude hooks keep recovery leases in the authorized Claude
-// folder, since the app container's ~/.clawd is out of their reach.
+// folder, since the app container's ~/.clawd is out of their reach. The
+// sandbox cannot run the setuid ps either, so process start identities come
+// from the bundled proc-info helper.
 function storeRecoveryLeaseOptions() {
   const dir = _storeExchangeFolders ? _storeExchangeFolders.dirFor("claude-code") : null;
-  return dir ? { recoveryDir: path.join(dir, require("../hooks/session-recovery-lease").LEASE_DIR_NAME) } : {};
+  const recoveryDir = dir ? path.join(dir, require("../hooks/session-recovery-lease").LEASE_DIR_NAME) : null;
+  return {
+    ...(recoveryDir ? { recoveryDir } : {}),
+    getProcessStartIdentities: (pids) => require("./mac-proc-info").getProcessStartIdentities(pids),
+  };
 }
 
 // ── HTTP server — delegated to src/server.js ──

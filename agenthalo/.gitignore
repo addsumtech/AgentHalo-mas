@@ -84,3 +84,6 @@ clawd-emoji-final/
 # Development provisioning profile for `npm run build:mas-dev`. It lists the
 # UDIDs of your test Macs, so it stays local.
 /build/development.provisionprofile
+
+# proc-info helper binary, compiled by scripts/build-proc-info.js at build time.
+/native/proc-info/build/
