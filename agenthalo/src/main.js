@@ -4089,6 +4089,7 @@ if (!gotTheLock) {
     recordWindowsProcessChainShadow = createWindowsProcessChainShadowLogger({
       filePath: path.join(app.getPath("userData"), "windows-process-chain-shadow.log"),
     });
+    require("./app-menu").installApplicationMenu({ Menu: require("electron").Menu, isPackaged: app.isPackaged === true });
     createWindow();
     try { recapRuntime.start(); }
     catch (err) { console.warn("AgentHalo: local recap startup failed:", err && err.code ? err.code : "storage-error"); }
