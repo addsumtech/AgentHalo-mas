@@ -104,7 +104,7 @@ The Mac App Store build of AgentHalo runs in App Sandbox. Everything above appli
 
 **Folder access.** The store build cannot open `~/.claude`, `~/.codex` or any other tool's configuration folder until you choose that folder yourself. In Settings → Connected apps, click "Choose folder" next to a tool. The system folder picker opens at that tool's folder; AgentHalo accepts only that folder or a folder that contains it, and cancelling writes nothing. AgentHalo then saves a security-scoped bookmark for the folder in `authorized-dirs.json`. It uses the bookmark only to add or remove its own hook entries in that tool's configuration, to read that tool's session files there to tell when a task has finished, and to keep the small `agenthalo` folder described next. Apart from its container and the folders you choose, the app cannot reach your files.
 
-**How the hooks find the app.** The container's `.clawd` folder is out of reach for the hooks, which run with your terminal; macOS would have to ask you to let the terminal read another app's data. So the store build keeps the few files it shares with its hooks in an `agenthalo` folder inside each folder you authorized, for example `~/.claude/agenthalo/`:
+**How the hooks find the app.** The container's `.clawd` folder is out of reach for the hooks, which run with your terminal; macOS would have to ask you to let the terminal read another app's data. So the store build keeps the few files it shares with its hooks in an `agenthalo` folder inside the folder of each tool you connect, for example `~/.claude/agenthalo/`. Disconnecting the tool removes that folder:
 
 | File | What it holds |
 | --- | --- |
@@ -126,10 +126,10 @@ The only requests it makes on its own behalf are the ones you start: the optiona
 
 **Revoking access and cleaning up.**
 
-1. To disconnect one tool, turn it off in Settings → Connected apps and choose to disconnect it. AgentHalo removes its hook entries from that tool's configuration folder.
+1. To disconnect one tool, turn it off in Settings → Connected apps and choose to disconnect it. AgentHalo removes its hook entries and its `agenthalo` folder from that tool's configuration folder.
 2. To check by hand, look in the tool's own configuration (for Claude Code, `hooks` in `~/.claude/settings.json`). AgentHalo's entries are the ones that point into `AgentHalo.app` or to `http://127.0.0.1` on a port from 23333 to 23337. You can delete them yourself.
 3. To withdraw every folder authorization, quit AgentHalo and delete `authorized-dirs.json` from the folder in the table above. The bookmarks are gone and AgentHalo has to ask again.
-4. To remove everything, disconnect your tools first, quit AgentHalo, move the app to the Trash, then delete `~/Library/Containers/com.addsum.agenthalo/` and the `agenthalo` folder inside each tool folder you authorized (for example `~/.claude/agenthalo/`).
+4. To remove everything, disconnect your tools first, quit AgentHalo, move the app to the Trash, then delete `~/Library/Containers/com.addsum.agenthalo/`. If you removed the app without disconnecting a tool first, also delete the `agenthalo` folder inside that tool's folder (for example `~/.claude/agenthalo/`).
 
 ## Changes
 
@@ -247,7 +247,7 @@ Mac App Store 版 AgentHalo 运行在 App Sandbox 里。上文内容同样适用
 
 **文件夹授权。** 在你亲手选择之前，商店版打不开 `~/.claude`、`~/.codex` 或任何工具的配置文件夹。在 设置 → 连接应用 里，点某个工具旁边的「选择文件夹」，系统文件夹选择器会停在那个工具的文件夹；AgentHalo 只接受这个文件夹或包含它的文件夹，取消则什么都不写。随后 AgentHalo 把该文件夹的安全范围书签存进 `authorized-dirs.json`，只用它在那个工具的配置里添加或移除自己的 hook 条目，读取那里的会话文件来判断任务是否结束，以及维护下面说明的 `agenthalo` 小文件夹。除了自己的容器和你选中的文件夹，应用碰不到你的其他文件。
 
-**hook 怎么找到应用。** 容器里的 `.clawd` 文件夹，hook 读不到：hook 跟着你的终端运行，要读别的应用的数据，macOS 得先弹窗征得你同意。所以商店版把和 hook 共享的几个文件放在你授权的每个文件夹里的 `agenthalo` 子文件夹，例如 `~/.claude/agenthalo/`：
+**hook 怎么找到应用。** 容器里的 `.clawd` 文件夹，hook 读不到：hook 跟着你的终端运行，要读别的应用的数据，macOS 得先弹窗征得你同意。所以商店版把和 hook 共享的几个文件放在每个已连接工具的文件夹里的 `agenthalo` 子文件夹，例如 `~/.claude/agenthalo/`。断开这个工具时，这个文件夹会一并删除：
 
 | 文件 | 内容 |
 | --- | --- |
@@ -269,10 +269,10 @@ Mac App Store 版 AgentHalo 运行在 App Sandbox 里。上文内容同样适用
 
 **撤销授权与清理。**
 
-1. 断开某个工具：在 设置 → 连接应用 里关掉它，并选择断开连接。AgentHalo 会从那个工具的配置文件夹里移除自己的 hook 条目。
+1. 断开某个工具：在 设置 → 连接应用 里关掉它，并选择断开连接。AgentHalo 会从那个工具的配置文件夹里移除自己的 hook 条目和 `agenthalo` 文件夹。
 2. 手动检查：打开那个工具自己的配置（Claude Code 是 `~/.claude/settings.json` 里的 `hooks`）。指向 `AgentHalo.app`，或指向 `http://127.0.0.1` 上 23333 到 23337 端口的条目就是 AgentHalo 加的，你可以自己删掉。
 3. 撤销全部文件夹授权：退出 AgentHalo，删除上表位置里的 `authorized-dirs.json`。书签随之失效，AgentHalo 需要重新请求授权。
-4. 彻底清除：先断开所有工具，退出 AgentHalo，把应用移到废纸篓，再删除 `~/Library/Containers/com.addsum.agenthalo/`，以及你授权过的每个工具文件夹里的 `agenthalo` 文件夹（例如 `~/.claude/agenthalo/`）。
+4. 彻底清除：先断开所有工具，退出 AgentHalo，把应用移到废纸篓，再删除 `~/Library/Containers/com.addsum.agenthalo/`。如果删除应用前没有先断开某个工具，再把那个工具文件夹里的 `agenthalo` 文件夹删掉（例如 `~/.claude/agenthalo/`）。
 
 ## 变更
 
