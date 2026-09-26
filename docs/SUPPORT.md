@@ -40,6 +40,10 @@ AgentHalo follows the system: it stays quiet when your Mac is muted or the outpu
 **The companion is in the way.**
 Drag it anywhere. Settings → Preferences adjusts size, and Do Not Disturb silences reactions without quitting.
 
+## Purchase and refunds
+
+AgentHalo is a one-time purchase on the Mac App Store, with no in-app purchases or subscriptions. Apple handles the payment; we never see your payment details. To install it on another Mac, sign in to the App Store there with the same Apple ID and download it again at no extra cost. For a refund, request one from Apple at [reportaproblem.apple.com](https://reportaproblem.apple.com).
+
 ## Uninstalling
 
 1. Settings → Connected apps → turn off each connected tool and choose to disconnect it. This deletes the hooks and the `agenthalo` folder AgentHalo added to their configuration folders.
@@ -103,6 +107,10 @@ AgentHalo 跟随系统：Mac 静音或输出音量为零时它会保持安静。
 
 **桌宠挡路了。**
 拖到任何地方都行。设置 → 偏好设置 可以调大小，勿扰模式可以在不退出的前提下让它安静。
+
+## 购买与退款
+
+AgentHalo 在 Mac App Store 一次性购买，没有应用内购买，也没有订阅。付款由 Apple 处理，我们看不到你的支付信息。在另一台 Mac 上用同一个 Apple ID 登录 App Store，就可以免费再次下载。需要退款，请到 [reportaproblem.apple.com](https://reportaproblem.apple.com) 向 Apple 申请。
 
 ## 卸载
 

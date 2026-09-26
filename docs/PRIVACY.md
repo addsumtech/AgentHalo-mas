@@ -1,6 +1,6 @@
 # AgentHalo Privacy Policy
 
-**Last updated:** 2026-09-25
+**Last updated:** 2026-09-26
 **Effective date:** 2026-09-25
 **Operator:** Addsum
 **Privacy contact:** [addsumtech@gmail.com](mailto:addsumtech@gmail.com)
@@ -114,6 +114,8 @@ The Mac App Store build of AgentHalo runs in App Sandbox. Everything above appli
 
 **What the app receives.** The hook messages described in [the local connection](#the-local-connection-agenthalo-listens-on) are the same in this build: task state, event name, working directory, tool name, task title, a short excerpt of the final reply when a task finishes, and the tool input of a permission request. AgentHalo processes this task status locally. Nothing is stored off your Mac, and nothing is uploaded to Apple, to us, or to anyone else.
 
+**Purchase.** The store build is a one-time purchase handled entirely by the App Store. Apple processes the payment under its own privacy policy; the app has no in-app purchases, does not read your App Store receipt, and receives no payment or Apple ID information. We see only the sales reports Apple gives every developer, which do not identify you.
+
 **What the store build leaves out.**
 
 - It does not send Apple Events and does not control Terminal or any other app.
@@ -143,7 +145,7 @@ Privacy questions: [addsumtech@gmail.com](mailto:addsumtech@gmail.com).
 
 # AgentHalo 隐私政策
 
-**最后更新：** 2026-09-25
+**最后更新：** 2026-09-26
 **生效日期：** 2026-09-25
 **运营主体：** Addsum
 **隐私联系：** [addsumtech@gmail.com](mailto:addsumtech@gmail.com)
@@ -256,6 +258,8 @@ Mac App Store 版 AgentHalo 运行在 App Sandbox 里。上文内容同样适用
 | `session-recovery-v1/`（仅 Claude Code 文件夹） | 由 hook 为每个进行中的 Claude Code 任务写入：会话 id、状态、工作目录、任务标题和进程号，让 AgentHalo 重启后能把任务重新显示出来。一天后过期 |
 
 **应用收到什么。** [AgentHalo 监听的本地连接](#agenthalo-监听的本地连接)里描述的 hook 消息在商店版里完全一样：任务状态、事件名、工作目录、工具名、任务标题、任务完成时回复的简短摘录，以及权限请求里的工具输入。AgentHalo 只在本机处理这些任务状态，不会存到你的 Mac 以外，也不会上传给苹果、我们或任何第三方。
+
+**购买。** 商店版是一次性购买，完全由 App Store 处理。付款由 Apple 按它自己的隐私政策处理；应用没有应用内购买，不读取你的 App Store 收据，也收不到任何付款信息或 Apple ID 信息。我们只能看到 Apple 提供给所有开发者的销售报告，里面没有能识别你的信息。
 
 **商店版不包含的东西。**
 

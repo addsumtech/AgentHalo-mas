@@ -3,6 +3,7 @@
 Bundle id：`com.addsum.agenthalo`  
 分类：Productivity  
 年龄分级：4+  
+价格：USD 1.99 买断（价格表基准国家/地区选美国，其他地区由 Apple 按当地价格点自动换算），没有应用内购买和订阅  
 许可：AGPL-3.0-only，源码：https://github.com/addsumtech/AgentHalo-mas
 
 联系：addsumtech@gmail.com  
@@ -11,6 +12,7 @@ Bundle id：`com.addsum.agenthalo`
 
 ## 提交前检查
 
+- 收费 App 要先在 App Store Connect 的「协议、税务和银行业务」里签好「付费 App」协议，并填完银行账户和税务信息，状态变成「有效」后价格才会生效。
 - 隐私政策 URL 必须在提交前就能公开打开。上面的建议地址要求 `addsumtech/AgentHalo-mas` 是公开仓库，并且 `main` 上已有 `docs/PRIVACY.md`。支持 URL 同理。
 - 审核备注和商店文案只链接本仓库。不要链接完整版仓库，它自带第三方角色。
 - App 隐私（App Privacy）问卷：开发者不收集任何数据，选「不收集数据」（Data Not Collected）。
