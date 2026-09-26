@@ -237,14 +237,20 @@
     }, label);
   }
 
-  function statusBadge(kind) {
+  function statusBadge(kind, a) {
     if (kind === "active") return el("span", { class: "ag-tag ok" }, i18n("tutorialAgentsActiveTag", "On"));
+    if (kind === "install" && a && a.suggested) {
+      return el("span", { class: "ag-tag info" }, i18n("tutorialAgentsSuggestedTag", "Recommended"));
+    }
     if (kind === "install") return el("span", { class: "ag-tag info" }, i18n("tutorialAgentsInstallTag", "Found"));
     return el("span", { class: "ag-tag warn" }, i18n("tutorialAgentsCleanupTag", "Tool not found"));
   }
 
-  function rowDesc(kind) {
+  function rowDesc(kind, a) {
     if (kind === "active") return i18n("tutorialAgentsActiveRowDesc", "AgentHalo can listen when this tool sends activity.");
+    if (kind === "install" && a && a.suggested) {
+      return i18n("tutorialAgentsSuggestedRowDesc", "Choose its settings folder and AgentHalo will follow its activity.");
+    }
     if (kind === "install") return i18n("tutorialAgentsInstallRowDesc", "Found on this computer. Let AgentHalo follow its activity.");
     return i18n("tutorialAgentsCleanupRowDesc", "A AgentHalo connection exists, but the tool was not found.");
   }
@@ -301,8 +307,8 @@
       el("span", { class: "ag-main" },
         el("span", { class: "ag-titleline" },
           el("span", { class: "ag-name" }, agentLabel(a)),
-          statusBadge(kind)),
-        el("span", { class: "ag-desc" }, rowDesc(kind))));
+          statusBadge(kind, a)),
+        el("span", { class: "ag-desc" }, rowDesc(kind, a))));
     if (isBusy) row.appendChild(el("span", { class: "ag-row-busy" }, i18n("tutorialWorking", "Working…")));
     return row;
   }
@@ -361,9 +367,13 @@
 
     // Actionable recommendations first (enable, then cleanup), confirmation last.
     if (ag.install.length) {
+      const anySuggested = ag.install.some((a) => a && a.suggested);
       wrap.appendChild(actionPanel("install", ag.install,
         "tutorialAgentsInstallLabel", "Recommended to enable",
-        "tutorialAgentsInstallDesc", "AgentHalo found these tools on this computer. Select the ones it should follow.",
+        anySuggested ? "tutorialAgentsSuggestedDesc" : "tutorialAgentsInstallDesc",
+        anySuggested
+          ? "Select the tools AgentHalo should follow."
+          : "AgentHalo found these tools on this computer. Select the ones it should follow.",
         "tutorialAgentsInstallAction", "Enable selected",
         i18n("tutorialAgentsInstallingSelected", "Enabling…")));
     }

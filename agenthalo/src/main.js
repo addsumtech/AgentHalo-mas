@@ -2619,6 +2619,7 @@ function getAgentOnboardingState() {
     agentsPref: _settingsController.get("agents"),
     installableIds: [...INSTALLABLE_AGENT_IDS],
     alwaysOfferIds: process.mas ? ["claude-code"] : [],
+    getAgentName: (agentId) => getAgent(agentId)?.name,
     getAgentIconUrl,
   });
 }

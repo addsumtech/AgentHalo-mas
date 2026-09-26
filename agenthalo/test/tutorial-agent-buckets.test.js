@@ -126,8 +126,14 @@ describe("bucketAgentsForTutorial", () => {
       detectionAgents: [detect("codex", "Codex CLI", true, "high")],
       agentsPref: {},
       alwaysOfferIds: ["claude-code"],
+      getAgentName: (agentId) => (agentId === "claude-code" ? "Claude Code" : undefined),
     });
     assert.deepStrictEqual(offered.install.map((item) => item.agentId), ["claude-code", "codex"]);
+    // Named from the registry, and marked so the guide does not say it was found.
+    assert.strictEqual(offered.install[0].label, "Claude Code");
+    assert.strictEqual(offered.install[0].suggested, true);
+    assert.strictEqual(offered.install[1].label, "Codex CLI");
+    assert.strictEqual(offered.install[1].suggested, undefined);
 
     const installed = bucketAgentsForTutorial({
       installableIds: INSTALLABLE,

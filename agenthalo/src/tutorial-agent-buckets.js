@@ -37,7 +37,8 @@ const { DEFAULT_INTEGRATION_INSTALLED_IDS } = require("./prefs");
 // alwaysOfferIds lists agents to offer for install even when the detector saw
 // nothing. The App Sandbox hides the home directory until the user picks a
 // folder, so the store build cannot detect Claude Code; installing it asks for
-// that folder first.
+// that folder first. Those rows carry `suggested: true` so the guide does not
+// claim the tool was found.
 const CLEANUP_EXEMPT_AGENT_IDS = new Set(DEFAULT_INTEGRATION_INSTALLED_IDS);
 
 function resolveIconUrl(iconUrlFor, agentId) {
@@ -50,11 +51,22 @@ function resolveIconUrl(iconUrlFor, agentId) {
   }
 }
 
+function resolveAgentName(nameFor, agentId) {
+  if (typeof nameFor !== "function") return null;
+  try {
+    const value = nameFor(agentId);
+    return typeof value === "string" && value.length ? value : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function bucketAgentsForTutorial({
   detectionAgents,
   agentsPref,
   installableIds,
   alwaysOfferIds,
+  getAgentName,
   getAgentIconUrl: iconUrlFor,
 } = {}) {
   const alwaysOffer = new Set(alwaysOfferIds || []);
@@ -68,7 +80,7 @@ function bucketAgentsForTutorial({
     const entry = byId.get(agentId);
     const item = {
       agentId,
-      label: (entry && entry.agentName) || agentId,
+      label: (entry && entry.agentName) || resolveAgentName(getAgentName, agentId) || agentId,
       iconUrl: resolveIconUrl(iconUrlFor, agentId),
     };
     const integrationInstalled = !!(prefs[agentId] && prefs[agentId].integrationInstalled);
@@ -84,7 +96,7 @@ function bucketAgentsForTutorial({
     } else if (!integrationInstalled && detected && (confidence === "high" || confidence === "medium")) {
       buckets.install.push(item);
     } else if (!integrationInstalled && alwaysOffer.has(agentId)) {
-      buckets.install.push(item);
+      buckets.install.push({ ...item, suggested: true });
     }
   }
   return buckets;
