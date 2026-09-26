@@ -6,6 +6,7 @@ const path = require("path");
 
 const {
   HOOK_ENTRIES,
+  STORE_MANAGED_MARKER,
   registerCodewhaleHooks,
   unregisterCodewhaleHooks,
   __test,
@@ -335,5 +336,124 @@ describe("CodeWhale hook installer", () => {
     assert.strictEqual((after.match(/^\s*enabled\s*=/gm) || []).length, 1);
     assert.match(after, /^\s*enabled\s*=\s*true$/m);
     assert.strictEqual(after.includes('trust_level = "trusted"'), true);
+  });
+});
+
+describe("CodeWhale hook installer in the Mac App Store build", () => {
+  const LAUNCHER = "/Applications/AgentHalo.app/Contents/Resources/app.asar.unpacked/hooks/node-launcher.sh";
+  const MOVED_LAUNCHER = "/Applications/Tools/AgentHalo.app/Contents/Resources/app.asar.unpacked/hooks/node-launcher.sh";
+
+  function registerStore(configPath, nodeBin = LAUNCHER) {
+    return registerCodewhaleHooks({ silent: true, configPath, env: {}, storeHooks: true, nodeBin });
+  }
+
+  function registerOther(configPath) {
+    return registerCodewhaleHooks({
+      silent: true,
+      configPath,
+      env: {},
+      storeHooks: false,
+      hookScriptPath: "/Applications/Other.app/Contents/Resources/app.asar.unpacked/hooks/codewhale-hook.js",
+      nodeBin: "/usr/local/bin/node",
+      platform: "darwin",
+    });
+  }
+
+  function countStoreMarkers(text) {
+    return text.split(`# ${STORE_MANAGED_MARKER}`).length - 1;
+  }
+
+  // The calls that write, rename or copy files while fn runs.
+  function recordWrites(fn) {
+    const writes = [];
+    const originals = {};
+    for (const name of ["writeFileSync", "renameSync", "copyFileSync", "appendFileSync"]) {
+      originals[name] = fs[name];
+      fs[name] = function recordedWrite(...args) {
+        writes.push([name, String(args[0])]);
+        return originals[name].apply(this, args);
+      };
+    }
+    try {
+      return { result: fn(), writes };
+    } finally {
+      Object.assign(fs, originals);
+    }
+  }
+
+  function seed(configPath) {
+    fs.writeFileSync(
+      configPath,
+      [
+        'model = "deepseek"',
+        "",
+        "[hooks]",
+        "enabled = true",
+        "",
+        "[[hooks.hooks]]",
+        'event = "session_start"',
+        'command = "echo user-hook-before"',
+        "",
+      ].join("\n"),
+      "utf8"
+    );
+  }
+
+  it("updates its own entries where they are when its launcher moves", () => {
+    const configPath = makeTempConfig();
+    seed(configPath);
+    registerStore(configPath);
+    // The user adds a hook after the store build's, and a table after that.
+    fs.appendFileSync(configPath, [
+      "",
+      "[[hooks.hooks]]",
+      'event = "session_end"',
+      'command = "echo user-hook-after"',
+      "",
+      "[tui]",
+      'theme = "dark"',
+      "",
+    ].join("\n"), "utf8");
+    registerOther(configPath);
+    const before = read(configPath);
+    assert.strictEqual(countStoreMarkers(before), HOOK_ENTRIES.length);
+    assert.ok(before.includes(LAUNCHER));
+
+    const result = registerStore(configPath, MOVED_LAUNCHER);
+
+    const after = read(configPath);
+    assert.strictEqual(result.updated, true);
+    assert.strictEqual(result.removed, HOOK_ENTRIES.length);
+    // Only the launcher path changed: every entry stayed where it was, the
+    // other install's and the user's included.
+    assert.strictEqual(after, before.split(LAUNCHER).join(MOVED_LAUNCHER));
+    assert.strictEqual(countStoreMarkers(after), HOOK_ENTRIES.length);
+
+    // The other install finds nothing of its own to change.
+    assert.deepStrictEqual(recordWrites(() => registerOther(configPath)).writes, []);
+    assert.strictEqual(read(configPath), after);
+  });
+
+  it("leaves current entries alone and writes nothing", () => {
+    const configPath = makeTempConfig();
+    seed(configPath);
+    registerStore(configPath);
+    // The other install puts its entries just below [hooks], above the store
+    // build's; the store build's stay current wherever they end up.
+    registerOther(configPath);
+    const before = read(configPath);
+    const statBefore = fs.statSync(configPath);
+    assert.strictEqual(countStoreMarkers(before), HOOK_ENTRIES.length);
+    assert.ok(before.indexOf("managed by clawd-on-desk") < before.indexOf(`# ${STORE_MANAGED_MARKER}`));
+
+    for (let round = 0; round < 3; round++) {
+      const { result, writes } = recordWrites(() => registerStore(configPath));
+      assert.deepStrictEqual(result, { added: 0, removed: 0, updated: false, skipped: true });
+      assert.deepStrictEqual(writes, [], `round ${round} wrote ${JSON.stringify(writes)}`);
+    }
+    assert.strictEqual(read(configPath), before);
+    const statAfter = fs.statSync(configPath);
+    assert.strictEqual(statAfter.ino, statBefore.ino);
+    assert.strictEqual(statAfter.mtimeMs, statBefore.mtimeMs);
   });
 });

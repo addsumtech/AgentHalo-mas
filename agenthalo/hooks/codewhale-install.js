@@ -295,7 +295,9 @@ function placeStoreHookSections(sections, newEntries) {
     }
   }
   for (const entry of newEntries) {
-    sections.splice(insertIdx, 0, { header: "hooks.hooks", startLine: -1, lines: entry.split("\n") });
+    // A trailing blank line keeps whatever follows apart, as the parsed entry
+    // it replaces did (reconstructToml collapses repeated blank lines).
+    sections.splice(insertIdx, 0, { header: "hooks.hooks", startLine: -1, lines: [...entry.split("\n"), ""] });
     insertIdx++;
   }
   return { changed: true, removed: managed.length };
