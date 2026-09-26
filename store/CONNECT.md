@@ -69,75 +69,60 @@ desktop,pet,AI,coding,companion,productivity,agent,developer,terminal,tasks,noti
 
 ## 审核备注 / Review Notes
 
-以下英文原样粘贴到 App Store Connect 的 App Review Information → Notes。
+以下英文原样粘贴到 App Store Connect 的 App Review Information → Notes。备注栏最多 4000 个字符，这段控制在 4000 以内，改动后请重新数一下。
 
 ---
 
-AgentHalo is a desktop companion for AI coding command-line tools that the user has already installed (for example Claude Code). It has no account, no server and no analytics, and it does not provide an AI service of its own.
+AgentHalo is a desktop companion for AI coding tools the user already has, such as Claude Code. It has no account, server or analytics, and provides no AI service of its own.
 
-HOW TO SEE IT WORK WITHOUT AN AI TOOL
+A. INSIDE THE APP (nothing else needed)
 
-A. Inside the app, no other software needed
+1. Launch AgentHalo. The companion appears on the desktop and an icon in the menu bar; a short welcome guide opens on first launch.
+2. Right-click the companion (or click the menu bar icon) and choose "Settings…".
+3. "Desktop companion": click any character card and the companion switches. Sun Wukong reacts to clicks and drags.
+4. "Animation and sound": click a row's thumbnail and the companion plays that state once.
 
-1. Launch AgentHalo. The companion appears on the desktop, and AgentHalo adds an icon to the menu bar. On first launch a short welcome guide opens; you can step through it or close it.
-2. Right-click the companion, or click the AgentHalo menu bar icon, and choose "Settings…".
-3. Click "Desktop companion" in the sidebar. Click any character card; the companion on the desktop switches right away. With Sun Wukong selected, clicking, double-clicking or dragging the companion plays a reaction.
-4. On the same page, click "Animation and sound". Each row is one state, labelled with the tool event that triggers it (for example "UserPromptSubmit" for thinking, "PreToolUse" for working, "PermissionRequest" for waiting, "Stop" for done). Click the thumbnail at the left of a row. The companion on the desktop plays that animation once.
-
-B. Simulate a coding tool from Terminal (no AI tool or account needed)
+B. SIMULATE A CODING TOOL FROM TERMINAL (no AI tool or account needed)
 
 These commands send the same local messages a tool's hook sends. AgentHalo listens on the first free port from 23333 to 23337; on a clean Mac that is 23333.
 
-1. Task starts working. The companion switches to its working animation:
+1. Working:
 
    curl -X POST http://127.0.0.1:23333/state -H 'Content-Type: application/json' -d '{"agent_id":"claude-code","session_id":"review-demo","state":"working","event":"PreToolUse","tool_name":"Edit","session_title":"Review demo"}'
 
-2. Right-click the companion and choose "Open tasks". The list shows "Review demo" as working.
+2. Right-click the companion and choose "Open tasks": "Review demo" is listed as working.
 
-3. Permission request. A bubble with the command and Allow / Deny buttons appears next to the companion. This command waits until you click one of them, then prints the decision:
+3. Permission bubble. The command waits until you click Allow or Deny, then prints the decision:
 
    curl -X POST http://127.0.0.1:23333/permission -H 'Content-Type: application/json' -d '{"agent_id":"claude-code","session_id":"review-demo","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"echo hello"}}'
 
-4. Task finishes. The companion plays its done animation and sound:
+4. Done animation and sound:
 
    curl -X POST http://127.0.0.1:23333/state -H 'Content-Type: application/json' -d '{"agent_id":"claude-code","session_id":"review-demo","state":"attention","event":"Stop"}'
 
-C. With Claude Code installed
+C. WITH CLAUDE CODE INSTALLED
 
-1. In Settings → Connected apps, click "Choose folder" next to Claude Code and select ~/.claude in the system panel (hidden folders are shown). The row changes to connected.
-2. In Terminal, run claude and ask for something that edits a file or runs a command. The companion switches to working and the task appears in "Open tasks".
-3. When Claude Code asks for permission, the bubble appears next to the companion; click Allow.
-4. When the task finishes, the companion plays its done animation.
-5. Back in Settings → Connected apps, turn Claude Code off and choose to disconnect it. AgentHalo removes its hook entries from ~/.claude/settings.json.
+In Settings → Connected apps, click "Choose folder" next to Claude Code and select ~/.claude. Run claude in Terminal and ask it to edit a file: the companion works, a permission bubble appears, and it celebrates when the task ends. "Disconnect" removes everything AgentHalo added.
 
-WHY A LOCAL SERVER (network.server)
+ENTITLEMENTS
 
-AgentHalo runs a small HTTP server bound to 127.0.0.1 only, on the first free port from 23333 to 23337. The user's own coding tools run small hook scripts that post task status to it. It is not reachable from the network. The client entitlement is used only for requests the user starts: importing a companion pack from a link they opened, or showing Kimi Code usage after the user saves their own Kimi API key (a request to api.kimi.com with that key).
+- network.server: a small HTTP server bound to 127.0.0.1 only (first free port 23333-23337). The user's coding tools post task status to it through hook scripts. It is not reachable from the network.
+- network.client: only for requests the user starts: importing a companion pack from a link they opened, or Kimi Code usage after the user saves their own Kimi API key.
+- user-selected files and app-scoped bookmarks: App Sandbox blocks tool folders such as ~/.claude. The user chooses the folder in Settings; AgentHalo accepts only that folder or its parent and keeps a bookmark in its container. It uses the folder to add or remove its hook entries, read the tool's session files, and keep a small "agenthalo" subfolder (the local port for the hooks, the Codex auto-start setting, and short-lived records of running Claude Code tasks). Disconnecting removes both.
 
-WHY THE FOLDER PICKER (user-selected files and app-scoped bookmarks)
+DATA
 
-App Sandbox blocks access to tool config folders such as ~/.claude or ~/.codex. In Settings → Connected apps, the user clicks "Choose folder" for a tool. The system open panel starts at that tool's folder (hidden folders shown), and AgentHalo accepts only that folder or a folder that contains it. AgentHalo saves a security-scoped bookmark in authorized-dirs.json inside its own container and uses it only to add or remove its hook entries in that tool's config folder, to read the tool's session files there, and to keep a small "agenthalo" subfolder there. That subfolder holds runtime.json (the local port and process id, removed on quit) so the hooks, which run outside the sandbox, can find the app without reading its container; for Codex, the auto-start setting; and for Claude Code, short-lived records of running tasks that the hook writes so the app can show them again after a restart. Canceling the panel writes nothing. Outside its own container, AgentHalo can reach only the folders the user picks. Removing a tool in Settings → Connected apps removes the hook entries and the "agenthalo" subfolder again.
+Hooks send task state, event name, working directory, tool name, a task title, a short excerpt of the final reply, and a permission request's tool input. Everything is processed on the Mac; nothing is sent to us, to Apple, or to any analytics service. The app does not send Apple Events or control other apps.
 
-NO APPLE EVENTS
+NOT INCLUDED
 
-This build does not send Apple Events and does not control other apps.
-
-WHAT DATA THE APP RECEIVES
-
-Hooks send the task state, event name, working directory, tool name, and a task title taken from the first line of the user's prompt (or the tool's session title). When a task finishes, the hook adds a short excerpt (at most 2,400 characters) of the assistant's last reply so the companion can choose a reaction. Permission requests include the tool input (for example the command) so the bubble can show it before the user decides. For Claude Code, AgentHalo also reads the end of the session file in the authorized folder to confirm a task has finished. All of this is processed on the Mac. Nothing is sent to us, to Apple, or to any analytics service.
-
-WHAT THIS BUILD DOES NOT INCLUDE
-
-Remote and messaging features are not included: Telegram, Feishu/Lark, Slack, Discord, remote SSH, WSL and LAN preview. The store build does not install a VS Code extension and does not ship a browser extension. It has no self-updater; updates come only from the Mac App Store.
+No remote or messaging features (Telegram, Feishu/Lark, Slack, Discord, remote SSH, WSL, LAN preview), no VS Code or browser extension, no self-updater.
 
 CHARACTERS
 
-The built-in characters are 17 original companions created for AgentHalo, plus Sun Wukong from the 16th-century novel Journey to the West, in original artwork. No real people and no third-party characters are included. Users can import their own character packs; they stay in the app's container.
+17 original companions created for AgentHalo, plus Sun Wukong from the 16th-century novel Journey to the West, in original artwork. No real people or third-party characters. Imported character packs stay in the app's container.
 
-SOURCE CODE
-
-AgentHalo is licensed under AGPL-3.0-only. Source for this build: https://github.com/addsumtech/AgentHalo-mas
-
+SOURCE CODE: AGPL-3.0-only, https://github.com/addsumtech/AgentHalo-mas
 Contact: addsumtech@gmail.com
 
 ---

@@ -337,3 +337,41 @@ describe("retired Telegram sidecar", () => {
     }
   });
 });
+
+describe("App Store Connect text", () => {
+  const connect = fs.readFileSync(path.join(ROOT, "..", "store", "CONNECT.md"), "utf8");
+
+  function listingFields(heading, labels) {
+    const section = connect.slice(connect.indexOf(heading));
+    const end = section.indexOf("\n## ", heading.length);
+    const body = end === -1 ? section : section.slice(0, end);
+    return labels.map((label, index) => {
+      const start = body.indexOf(`**${label}**`) + label.length + 4;
+      const next = labels[index + 1];
+      const stop = next ? body.indexOf(`**${next}**`) : body.length;
+      return body.slice(start, stop).trim();
+    });
+  }
+
+  it("fits each listing field and pastes as plain text", () => {
+    for (const [heading, labels] of [
+      ["## 中文", ["名称", "副标题", "描述", "关键词"]],
+      ["## English", ["Name", "Subtitle", "Description", "Keywords"]],
+    ]) {
+      const [name, subtitle, description, keywords] = listingFields(heading, labels);
+      assert.ok(name.length > 0 && name.length <= 30, `${heading} name`);
+      assert.ok(subtitle.length > 0 && subtitle.length <= 30, `${heading} subtitle`);
+      assert.ok(description.length > 0 && description.length <= 4000, `${heading} description`);
+      assert.ok(keywords.length > 0 && keywords.length <= 100, `${heading} keywords`);
+      // App Store Connect shows these as typed; Markdown would show up literally.
+      assert.doesNotMatch(`${name}${subtitle}${description}${keywords}`, /[`*_]{1,2}\S/);
+    }
+  });
+
+  it("keeps the review notes within the 4000-character Notes field", () => {
+    const section = connect.slice(connect.indexOf("## 审核备注"));
+    const notes = section.split("\n---\n")[1].trim();
+    assert.match(notes, /^AgentHalo is a desktop companion/);
+    assert.ok(notes.length <= 4000, `review notes are ${notes.length} characters`);
+  });
+});
