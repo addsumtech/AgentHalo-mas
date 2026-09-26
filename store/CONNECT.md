@@ -19,6 +19,8 @@ Bundle id：`com.addsum.agenthalo`
 
 ## 中文
 
+以下名称、副标题、描述和关键词原样粘贴；App Store 不渲染 Markdown，所以正文里不用反引号等标记。
+
 **名称**  
 AgentHalo
 
@@ -35,7 +37,7 @@ AgentHalo 是一只安静待在桌面上的小伙伴。你的本地 AI 编程工
 
 隐私：任务状态只在你的 Mac 上处理。为了显示任务和气泡，AgentHalo 会收到任务标题、工具名、工作目录，以及完成时回复的简短摘录；这些内容不会存到 Mac 以外，也不会上传给苹果或我们。没有账号，没有统计。本机状态服务只监听 127.0.0.1。
 
-要接入某个工具，你需要在设置里亲手选择它的配置文件夹（例如 `~/.claude`）。AgentHalo 只在你授权的文件夹里写入 hook 配置和一个 `agenthalo` 小文件夹，hook 配置随时可以在设置里移除。
+要接入某个工具，你需要在设置里亲手选择它的配置文件夹（例如 ~/.claude）。AgentHalo 只在你授权的文件夹里写入 hook 配置和一个 agenthalo 小文件夹，在设置里断开连接时两者都会移除。
 
 **关键词**  
 桌宠,AI,编程,效率,伴侣,任务,智能体,开发者,终端,提醒,命令行
@@ -58,7 +60,7 @@ AgentHalo sits on your Mac desktop and follows your local AI coding tools. When 
 
 Privacy: task status is processed only on your Mac. To show tasks and bubbles, AgentHalo receives task titles, tool names, working folders, and a short excerpt of the final reply when a task finishes. None of it is stored off your Mac or uploaded to Apple or to us. There is no account and no analytics. The local status server listens on 127.0.0.1 only.
 
-To connect a tool, you choose that tool's config folder in Settings (for example `~/.claude`). AgentHalo writes its hook entries and a small `agenthalo` folder only in folders you authorize, and you can remove the hook entries in Settings at any time.
+To connect a tool, you choose that tool's config folder in Settings (for example ~/.claude). AgentHalo writes its hook entries and a small agenthalo folder only in folders you authorize, and disconnecting the tool in Settings removes both.
 
 **Keywords**  
 desktop,pet,AI,coding,companion,productivity,agent,developer,terminal,tasks,notification

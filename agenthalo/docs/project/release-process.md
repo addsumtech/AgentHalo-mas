@@ -10,8 +10,12 @@ AgentHalo repository; their workflows and scripts are not part of this one.
 The repository-root `.github/workflows/ci.yml` runs `npm ci`, `npm test` and
 `npm run audit:assets` on macOS for every push and pull request.
 
-1. Bump `version` in `package.json` and `package-lock.json`, and set the
-   matching build number in App Store Connect.
+1. Bump `version` in `package.json` and `package-lock.json`. The app's
+   build number (`CFBundleVersion`) is that version unless `build.buildVersion`
+   is set, and App Store Connect refuses a second upload with the same build
+   number. To upload another build of the same version, for example after
+   App Review rejects one, set `build.buildVersion` to a higher value such as
+   `1.0.4.1`.
 2. Add `docs/releases/release-vX.Y.Z.md`.
 3. Run `npm test`, `npm run audit:assets` and
    `node scripts/audit-runtime-reachability.js --check`. Record any
