@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -11,6 +12,27 @@ from companion_sounds import write_sounds
 
 ROOT = Path(__file__).resolve().parent.parent
 THEMES = ROOT / "themes"
+
+# Keep the existing five filenames so saved animation selections still resolve.
+ANIMATION_FILES = {
+    "idle-follow.svg": "idle",
+    "thinking.svg": "thinking",
+    "working.svg": "working",
+    "attention.svg": "attention",
+    "sleeping.svg": "sleeping",
+    "delegating.svg": "delegating",
+    "error.svg": "error",
+    "notification.svg": "notification",
+    "waking.svg": "waking",
+    "walk.svg": "walk",
+    "tier2.svg": "tier2",
+    "rally.svg": "rally",
+    "idle-wave.svg": "idle-wave",
+    "idle-special.svg": "idle-special",
+    "react-poke.svg": "react-poke",
+    "react-double.svg": "react-double",
+    "react-drag.svg": "react-drag",
+}
 
 CHARACTERS = [
     {
@@ -327,7 +349,7 @@ def theme_json(char: dict) -> dict:
         "schemaVersion": 1,
         "name": {"zh": char["zh"], "zh-TW": char["zh_tw"], "en": char["en"]},
         "author": "Addsum",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "description": char["desc"],
         "customization": {"petTint": False},
         "viewBox": {"x": -15, "y": -25, "width": 45, "height": 45},
@@ -354,50 +376,64 @@ def theme_json(char: dict) -> dict:
             "idle": ["idle-follow.svg"],
             "thinking": ["thinking.svg"],
             "working": ["working.svg"],
-            "juggling": ["working.svg"],
-            "error": {"fallbackTo": "attention"},
+            "juggling": ["delegating.svg"],
+            "error": ["error.svg"],
             "attention": ["attention.svg"],
-            "notification": {"fallbackTo": "attention"},
+            "notification": ["notification.svg"],
             "sweeping": {"fallbackTo": "attention"},
             "carrying": {"fallbackTo": "attention"},
             "sleeping": ["sleeping.svg"],
-            "waking": ["idle-follow.svg"],
+            "waking": ["waking.svg"],
+            "roam": ["walk.svg"],
         },
         "sleepSequence": {"mode": "direct"},
+        "workingTiers": [
+            {"minSessions": 3, "file": "rally.svg"},
+            {"minSessions": 2, "file": "tier2.svg"},
+            {"minSessions": 1, "file": "working.svg"},
+        ],
+        "jugglingTiers": [{"minSessions": 1, "file": "delegating.svg"}],
+        "idleAnimations": [
+            {"file": "idle-wave.svg", "duration": 4000},
+            {"file": "idle-special.svg", "duration": 8000},
+        ],
         "timings": {"mouseIdleTimeout": 20000, "mouseSleepTimeout": 60000},
         "hitBoxes": {
             "default": {"x": -3, "y": -6, "w": 22, "h": 22},
             "sleeping": {"x": -3, "y": 4, "w": 22, "h": 12},
         },
         "sleepingHitboxFiles": ["sleeping.svg"],
+        "reactions": {
+            "drag": {"file": "react-drag.svg"},
+            "clickLeft": {"file": "react-poke.svg", "duration": 2500},
+            "clickRight": {"file": "react-poke.svg", "duration": 2500},
+            "double": {"files": ["react-double.svg"], "duration": 3000},
+        },
         "sounds": {"complete": "complete.mp3", "confirm": "confirm.mp3"},
         "miniMode": {"supported": False},
         "objectScale": {"widthRatio": 1.9, "heightRatio": 1.3, "offsetX": -0.45, "offsetY": -0.25},
     }
 
 
-def write_character(char: dict) -> None:
+def write_character(char: dict, *, with_sounds: bool = True) -> None:
     theme_dir = THEMES / char["id"]
     assets = theme_dir / "assets"
     sounds = theme_dir / "sounds"
     assets.mkdir(parents=True, exist_ok=True)
     sounds.mkdir(parents=True, exist_ok=True)
     (theme_dir / "theme.json").write_text(json.dumps(theme_json(char), ensure_ascii=False, indent=2) + "\n")
-    mapping = {
-        "idle-follow.svg": "idle",
-        "thinking.svg": "thinking",
-        "working.svg": "working",
-        "attention.svg": "attention",
-        "sleeping.svg": "sleeping",
-    }
-    for filename, kind in mapping.items():
+    for filename, kind in ANIMATION_FILES.items():
         (assets / filename).write_text(svg_for(char, kind))
-    write_sounds(char, sounds)
+    if with_sounds:
+        write_sounds(char, sounds)
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--visuals-only", action="store_true", help="Keep existing sounds; generate SVGs and theme.json only.")
+    args = parser.parse_args()
     for char in CHARACTERS:
-        write_character(char)
+        write_character(char, with_sounds=not args.visuals_only)
         print(char["id"], char["zh"])
 
 

@@ -30,6 +30,34 @@ def style_for(kind: str) -> str:
     @keyframes hop { 0%,100%{transform:translateY(0)} 40%{transform:translateY(-1.5px)} }
     #body-js { animation: hop 1.1s ease-in-out infinite; }
 """
+    motions = {
+        "delegating": ("delegate", "1.2s ease-in-out infinite", "0%,100%{transform:rotate(-4deg)} 50%{transform:rotate(4deg)}"),
+        "tier2": ("twoTasks", "0.65s ease-in-out infinite", "0%,100%{transform:translateY(0)} 50%{transform:translateY(-0.8px)}"),
+        "rally": ("manyTasks", "0.5s ease-in-out infinite", "0%,100%{transform:translateY(0) rotate(-2deg)} 50%{transform:translateY(-1.2px) rotate(2deg)}"),
+        "error": ("oops", "1.8s ease-in-out infinite", "0%,35%,100%{transform:translateX(0)} 8%,24%{transform:translateX(-0.8px)} 16%{transform:translateX(0.8px)}"),
+        "notification": ("notice", "1.6s ease-in-out infinite", "0%,60%,100%{transform:translateY(0)} 20%,40%{transform:translateY(-0.7px)}"),
+        "waking": ("wake", "1.5s ease-out both", "0%{transform:scaleY(0.8)} 45%{transform:scaleY(1.08) translateY(-0.4px)} 100%{transform:scaleY(1)}"),
+        "walk": ("step", "0.6s ease-in-out infinite", "0%,100%{transform:translateY(0) rotate(-3deg)} 25%,75%{transform:translateY(-0.6px)} 50%{transform:translateY(0) rotate(3deg)}"),
+        "idle-wave": ("hello", "4s ease-in-out infinite", "0%,65%,100%{transform:rotate(0)} 15%,45%{transform:rotate(-5deg)} 30%{transform:rotate(5deg)}"),
+        "idle-special": ("daydream", "8s ease-in-out infinite", "0%,100%{transform:rotate(0)} 25%,65%{transform:translateY(-0.8px) rotate(6deg)} 45%{transform:rotate(-3deg)}"),
+        "react-poke": ("poke", "2.5s ease-in-out both", "0%,100%{transform:scale(1)} 12%{transform:scale(1.08,0.9)} 30%{transform:scale(0.96,1.06)} 55%{transform:scale(1)}"),
+        "react-double": ("delight", "3s ease-in-out both", "0%,100%{transform:translateY(0)} 12%,45%{transform:translateY(-3px) rotate(-5deg)} 28%,65%{transform:translateY(0) rotate(4deg)} 80%{transform:rotate(0)}"),
+        "react-drag": ("sway", "0.75s ease-in-out infinite", "0%,100%{transform:rotate(-6deg) translateY(-0.5px)} 50%{transform:rotate(6deg) translateY(-1px)}"),
+    }
+    if kind in motions:
+        name, timing, frames = motions[kind]
+        css = f"""
+    @keyframes {name} {{ {frames} }}
+    .companion-motion {{ transform-origin: 7.5px 17px; animation: {name} {timing}; }}
+    @keyframes signal {{ 0%,100%{{opacity:.35}} 50%{{opacity:1}} }}
+    .signal {{ animation: signal 1.2s ease-in-out infinite; }}
+"""
+        if kind == "waking":
+            css += """
+    @keyframes openEyes { 0%{transform:scaleY(.1)} 50%{transform:scaleY(.5)} 100%{transform:scaleY(1)} }
+    #eyes-js { transform-box: fill-box; transform-origin: center; animation: openEyes 1.5s ease-out both; }
+"""
+        return css
     return ""
 
 
@@ -44,6 +72,32 @@ def extras(char: dict, kind: str) -> str:
             f'<circle class="d1" cx="17.4" cy="1.2" r="0.5" fill="{char["eye"]}"/>'
             f'<circle class="d2" cx="19" cy="1.2" r="0.5" fill="{char["eye"]}"/>'
             f'<circle class="d3" cx="20.6" cy="1.2" r="0.5" fill="{char["eye"]}"/>'
+        )
+    accent, stroke = char["accent"], char["stroke"]
+    if kind in ("delegating", "tier2", "rally"):
+        count = {"delegating": 3, "tier2": 2, "rally": 3}[kind]
+        return "".join(
+            f'<rect class="signal" x="{17.2 + (i % 2) * 3.0}" y="{-3.4 + (i // 2) * 3.0}" '
+            f'width="2" height="2" rx="0.5" fill="{accent}" style="animation-delay:{i * 0.2}s"/>'
+            for i in range(count)
+        )
+    if kind == "error":
+        return (
+            f'<circle class="signal" cx="19" cy="-2" r="2.2" fill="{accent}"/>'
+            f'<path d="M19 -3.2 V-1.8 M19 -0.8 V-0.7" stroke="{char["eye"]}" stroke-width="0.55" stroke-linecap="round"/>'
+        )
+    if kind == "notification":
+        return (
+            f'<path class="signal" d="M16.8 0 Q17.2 -0.5 17.2 -2.4 A1.8 1.8 0 0 1 20.8 -2.4 Q20.8 -0.5 21.2 0 Z" '
+            f'fill="{accent}" stroke="{stroke}" stroke-width="0.35"/>'
+            f'<circle cx="19" cy="0.8" r="0.55" fill="{stroke}"/>'
+        )
+    if kind == "idle-wave":
+        return f'<path class="signal" d="M18 -2 Q20 -0.5 18 1 M20 -3 Q23 -0.5 20 2" fill="none" stroke="{accent}" stroke-width="0.65" stroke-linecap="round"/>'
+    if kind in ("idle-special", "react-double"):
+        return (
+            f'<path class="signal" d="M18 -8 L18.7 -6.2 L20.5 -5.5 L18.7 -4.8 L18 -3 L17.3 -4.8 L15.5 -5.5 L17.3 -6.2 Z" fill="{accent}"/>'
+            f'<circle class="signal" cx="-2.8" cy="-7" r="0.6" fill="{stroke}" style="animation-delay:.4s"/>'
         )
     return ""
 
@@ -72,7 +126,13 @@ def smile(cx: float, cy: float, color: str, wide: float = 1.5) -> str:
 
 def eyes(char: dict, kind: str, cx1: float, cy: float, cx2: float, r: float = 0.95) -> str:
     color = char["eye"]
-    if kind == "attention":
+    if kind == "error":
+        return "".join(
+            f'<path d="M{cx - r:.1f} {cy - r:.1f} L{cx + r:.1f} {cy + r:.1f} M{cx - r:.1f} {cy + r:.1f} L{cx + r:.1f} {cy - r:.1f}" '
+            f'fill="none" stroke="{color}" stroke-width="0.65" stroke-linecap="round"/>'
+            for cx in (cx1, cx2)
+        )
+    if kind in ("attention", "idle-wave", "idle-special", "react-double", "rally"):
         return (
             f'<path d="M{cx1 - 1.05:.1f} {cy:.1f} q1.05 1.1 2.1 0" fill="none" stroke="{color}" stroke-width="0.7" stroke-linecap="round"/>'
             f'<path d="M{cx2 - 1.05:.1f} {cy:.1f} q1.05 1.1 2.1 0" fill="none" stroke="{color}" stroke-width="0.7" stroke-linecap="round"/>'
@@ -105,7 +165,7 @@ def eyes(char: dict, kind: str, cx1: float, cy: float, cx2: float, r: float = 0.
 def body_and_eyes(char: dict, kind: str) -> tuple[str, str]:
     cid = char["id"]
     b, s, a, f = char["body"], char["stroke"], char["accent"], char["feet"]
-    sleep = kind == "sleeping"
+    sleep = kind in ("sleeping", "error")
     mouth = "" if sleep else smile(7.5, 6.6, s)
 
     if cid == "halo":
@@ -339,6 +399,21 @@ def body_and_eyes(char: dict, kind: str) -> tuple[str, str]:
 def svg_for(char: dict, kind: str) -> str:
     body, eye = body_and_eyes(char, kind)
     extra = extras(char, kind)
+    if kind not in ("idle", "thinking", "working", "attention", "sleeping"):
+        # Keep the eyes attached while the whole character tilts, hops or walks.
+        return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -25 45 45">
+  <style>{style_for(kind)}
+  </style>
+  <g id="shadow-js" style="transform-origin: 7.5px 15px">
+    <ellipse cx="7.5" cy="17.0" rx="6.4" ry="1.35" fill="rgba(47,32,18,0.15)"/>
+  </g>
+  <g class="companion-motion">
+    <g id="body-js">{body}</g>
+    <g id="eyes-js">{eye}</g>
+  </g>
+  <g class="state-effects">{extra}</g>
+</svg>
+"""
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -25 45 45">
   <style>{style_for(kind)}
   </style>

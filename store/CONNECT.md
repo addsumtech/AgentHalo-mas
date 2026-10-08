@@ -81,7 +81,7 @@ A. INSIDE THE APP (nothing else needed)
 
 1. Launch AgentHalo. The companion appears on the desktop and an icon in the menu bar; a short welcome guide opens on first launch.
 2. Right-click the companion (or click the menu bar icon) and choose "Settings…".
-3. "Desktop companion": click any character card and the companion switches. Sun Wukong reacts to clicks and drags.
+3. "Desktop companion": click any character card and the companion switches. All 18 companions react to clicks, double-clicks and drags.
 4. "Animation and sound": click a row's thumbnail and the companion plays that state once.
 
 B. SIMULATE A CODING TOOL FROM TERMINAL (no AI tool or account needed)

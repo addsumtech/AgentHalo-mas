@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -25 45 45">
+  <style>
+    @keyframes oops { 0%,35%,100%{transform:translateX(0)} 8%,24%{transform:translateX(-0.8px)} 16%{transform:translateX(0.8px)} }
+    .companion-motion { transform-origin: 7.5px 17px; animation: oops 1.8s ease-in-out infinite; }
+    @keyframes signal { 0%,100%{opacity:.35} 50%{opacity:1} }
+    .signal { animation: signal 1.2s ease-in-out infinite; }
+
+  </style>
+  <g id="shadow-js" style="transform-origin: 7.5px 15px">
+    <ellipse cx="7.5" cy="17.0" rx="6.4" ry="1.35" fill="rgba(47,32,18,0.15)"/>
+  </g>
+  <g class="companion-motion">
+    <g id="body-js"><path d="M2.4 -3.2 L4.8 -8.0 L6.6 -2.4 Z" fill="#5e4c38"/><path d="M12.6 -3.2 L10.2 -8.0 L8.4 -2.4 Z" fill="#5e4c38"/><rect x="3.2" y="14.4" width="2.4" height="1.7" rx="0.85" fill="#735f46"/><rect x="9.4" y="14.4" width="2.4" height="1.7" rx="0.85" fill="#735f46"/><ellipse cx="7.5" cy="6.4" rx="7.2" ry="8.2" fill="#8b7355"/><ellipse cx="7.5" cy="11.4" rx="5.2" ry="2.4" fill="#5e4c38" opacity="0.16"/></g>
+    <g id="eyes-js"><path d="M4.2 2.8 L5.8 4.4 M4.2 4.4 L5.8 2.8" fill="none" stroke="#1c1610" stroke-width="0.65" stroke-linecap="round"/><path d="M9.2 2.8 L10.8 4.4 M9.2 4.4 L10.8 2.8" fill="none" stroke="#1c1610" stroke-width="0.65" stroke-linecap="round"/></g>
+  </g>
+  <g class="state-effects"><circle class="signal" cx="19" cy="-2" r="2.2" fill="#f0e6c8"/><path d="M19 -3.2 V-1.8 M19 -0.8 V-0.7" stroke="#1c1610" stroke-width="0.55" stroke-linecap="round"/></g>
+</svg>

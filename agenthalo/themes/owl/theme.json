@@ -6,7 +6,7 @@
     "en": "Owl"
   },
   "author": "Addsum",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A stout owl with ear tufts.",
   "customization": {
     "petTint": false
@@ -58,17 +58,17 @@
       "working.svg"
     ],
     "juggling": [
-      "working.svg"
+      "delegating.svg"
     ],
-    "error": {
-      "fallbackTo": "attention"
-    },
+    "error": [
+      "error.svg"
+    ],
     "attention": [
       "attention.svg"
     ],
-    "notification": {
-      "fallbackTo": "attention"
-    },
+    "notification": [
+      "notification.svg"
+    ],
     "sweeping": {
       "fallbackTo": "attention"
     },
@@ -79,12 +79,45 @@
       "sleeping.svg"
     ],
     "waking": [
-      "idle-follow.svg"
+      "waking.svg"
+    ],
+    "roam": [
+      "walk.svg"
     ]
   },
   "sleepSequence": {
     "mode": "direct"
   },
+  "workingTiers": [
+    {
+      "minSessions": 3,
+      "file": "rally.svg"
+    },
+    {
+      "minSessions": 2,
+      "file": "tier2.svg"
+    },
+    {
+      "minSessions": 1,
+      "file": "working.svg"
+    }
+  ],
+  "jugglingTiers": [
+    {
+      "minSessions": 1,
+      "file": "delegating.svg"
+    }
+  ],
+  "idleAnimations": [
+    {
+      "file": "idle-wave.svg",
+      "duration": 4000
+    },
+    {
+      "file": "idle-special.svg",
+      "duration": 8000
+    }
+  ],
   "timings": {
     "mouseIdleTimeout": 20000,
     "mouseSleepTimeout": 60000
@@ -106,6 +139,25 @@
   "sleepingHitboxFiles": [
     "sleeping.svg"
   ],
+  "reactions": {
+    "drag": {
+      "file": "react-drag.svg"
+    },
+    "clickLeft": {
+      "file": "react-poke.svg",
+      "duration": 2500
+    },
+    "clickRight": {
+      "file": "react-poke.svg",
+      "duration": 2500
+    },
+    "double": {
+      "files": [
+        "react-double.svg"
+      ],
+      "duration": 3000
+    }
+  },
   "sounds": {
     "complete": "complete.mp3",
     "confirm": "confirm.mp3"

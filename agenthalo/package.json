@@ -258,7 +258,8 @@
     "masDev": {
       "identity": "LI JIE",
       "provisioningProfile": "build/development.provisionprofile"
-    }
+    },
+    "buildVersion": "10402"
   },
   "engines": {
     "node": ">=22.12.0"
