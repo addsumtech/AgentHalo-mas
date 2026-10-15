@@ -1,6 +1,6 @@
 {
   "name": "agenthalo",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "A quiet desktop companion for your AI tasks. Mac App Store edition.",
   "main": "src/main.js",
   "scripts": {
@@ -259,7 +259,7 @@
       "identity": "LI JIE",
       "provisioningProfile": "build/development.provisionprofile"
     },
-    "buildVersion": "10402"
+    "buildVersion": "10501"
   },
   "engines": {
     "node": ">=22.12.0"
