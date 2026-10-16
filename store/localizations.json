@@ -1,0 +1,110 @@
+{
+  "appId": "6814860893",
+  "platform": "MAC_OS",
+  "version": "1.0.5",
+  "build": "10501",
+  "localizations": {
+    "en-US": {
+      "name": "AgentHalo",
+      "subtitle": "A quiet companion for AI tasks",
+      "privacyPolicyUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/PRIVACY.md",
+      "description": "AgentHalo sits on your Mac desktop and follows your local AI coding tools. When a task is thinking, working, or waiting for you, the companion shows it. When the work is done, it gives you a small nudge.\n\n· Task list: see which tasks are working and which are waiting for you.\n· Permission bubbles: when a tool asks to run a command, a bubble next to the companion shows what it wants to do, and you allow or deny it.\n· 18 built-in characters: 17 original companions (Halo, Sprout, Persimmon, Ink, Crescent, and more) plus Sun Wukong, each with its own animations and sounds. You can also import your own character packs.\n\nPrivacy: task status is processed only on your Mac. To show tasks and bubbles, AgentHalo receives task titles, tool names, working folders, and a short excerpt of the final reply when a task finishes. None of it is stored off your Mac or uploaded to Apple or to us. There is no account and no analytics. The local status server listens on 127.0.0.1 only.\n\nTo connect a tool, you choose that tool's config folder in Settings (for example ~/.claude). AgentHalo writes its hook entries and a small agenthalo folder only in folders you authorize, and disconnecting the tool in Settings removes both.",
+      "keywords": "desktop,pet,AI,coding,companion,productivity,agent,developer,terminal,tasks,notification",
+      "supportUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/SUPPORT.md",
+      "promotionalText": "Keep track of local AI coding tasks with a quiet desktop companion. See progress, respond to permission requests and choose from 18 built-in characters.",
+      "whatsNew": "Added localized App Store text and screenshots in multiple languages. App functionality is unchanged.",
+      "screenshots": [
+        "screenshots/en-US/01-desktop.png",
+        "screenshots/en-US/02-choose-folder.png",
+        "screenshots/en-US/03-authorized.png",
+        "screenshots/en-US/04-characters.png",
+        "screenshots/en-US/05-about.png"
+      ]
+    },
+    "zh-Hans": {
+      "name": "AgentHalo",
+      "subtitle": "桌面上的 AI 任务伴侣",
+      "privacyPolicyUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/PRIVACY.md",
+      "description": "AgentHalo 是一只安静待在桌面上的小伙伴。你的本地 AI 编程工具开始干活、思考、或等你确认时，它会跟着动；事情做完了，它再轻轻提醒你一声。\n\n· 任务列表：看到哪些任务在工作、哪些在等你。\n· 权限气泡：工具请求执行命令时，桌宠旁边弹出气泡，显示它要做什么，由你允许或拒绝。\n· 18 个内置角色：17 个原创桌宠（光环、豆芽、柿子、墨点、月牙等），以及孙悟空。每个角色都有自己的动画和音效。你也可以导入自己的角色包。\n\n隐私：任务状态只在你的 Mac 上处理。为了显示任务和气泡，AgentHalo 会收到任务标题、工具名、工作目录，以及完成时回复的简短摘录；这些内容不会存到 Mac 以外，也不会上传给苹果或我们。没有账号，没有统计。本机状态服务只监听 127.0.0.1。\n\n要接入某个工具，你需要在设置里亲手选择它的配置文件夹（例如 ~/.claude）。AgentHalo 只在你授权的文件夹里写入 hook 配置和一个 agenthalo 小文件夹，在设置里断开连接时两者都会移除。",
+      "keywords": "桌宠,AI,编程,效率,伴侣,任务,智能体,开发者,终端,提醒,命令行",
+      "supportUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/SUPPORT.md",
+      "promotionalText": "让桌宠陪你完成 AI 任务：查看本机编程助手的任务状态，及时处理权限请求，18 个内置角色可选。无需账号，任务信息留在 Mac 上。",
+      "whatsNew": "补齐多语言 App Store 文案与截图，应用功能保持不变。",
+      "screenshots": [
+        "screenshots/01-desktop.png",
+        "screenshots/02-choose-folder.png",
+        "screenshots/03-authorized.png",
+        "screenshots/04-characters.png",
+        "screenshots/05-about.png"
+      ]
+    },
+    "zh-Hant": {
+      "name": "AgentHalo",
+      "subtitle": "桌面上的 AI 任務夥伴",
+      "privacyPolicyUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/PRIVACY.md",
+      "description": "AgentHalo 待在 Mac 桌面上，陪你使用本機 AI 程式開發工具。任務正在思考、工作或等待你回應時，桌面夥伴會呈現對應狀態；工作完成後，再輕輕提醒你。\n\n・任務清單：查看哪些任務正在進行，哪些正在等你回應。\n・權限提示：工具請求執行指令時，桌面夥伴旁會顯示確認泡泡，讓你選擇允許或拒絕。\n・18 個內建角色：17 個原創夥伴，包括光環、豆芽、柿子、墨點、月牙等，以及孫悟空。每個角色都有自己的動畫和音效，也支援匯入自訂角色包。\n\n隱私：任務狀態只在你的 Mac 上處理。為了顯示任務和提示泡泡，AgentHalo 會接收任務標題、工具名稱、工作資料夾，以及任務完成時最後回覆的簡短片段。這些資訊不會儲存到 Mac 以外，也不會上傳給 Apple 或我們。無需帳號，不含分析追蹤。本機狀態服務只監聽 127.0.0.1。\n\n要接入工具，請在設定中選擇該工具的設定資料夾，例如 ~/.claude。AgentHalo 只會在你授權的資料夾內寫入 hook 項目及一個 agenthalo 小資料夾；在設定中斷開連線時，這兩部分都會移除。",
+      "keywords": "桌寵,AI,程式,夥伴,效率,開發,終端機,任務,通知",
+      "supportUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/SUPPORT.md",
+      "promotionalText": "讓桌面夥伴陪你完成 AI 任務：查看本機程式開發工具的任務狀態、處理權限請求，還有 18 個內建角色可選。無需帳號，任務資訊留在 Mac 上。",
+      "whatsNew": "補齊多語言 App Store 文案與截圖，應用程式功能保持不變。",
+      "screenshots": [
+        "screenshots/zh-Hant/01-desktop.png",
+        "screenshots/zh-Hant/02-choose-folder.png",
+        "screenshots/zh-Hant/03-authorized.png",
+        "screenshots/zh-Hant/04-characters.png",
+        "screenshots/zh-Hant/05-about.png"
+      ]
+    },
+    "ja": {
+      "name": "AgentHalo",
+      "subtitle": "AIタスクを見守るデスクトップの相棒",
+      "privacyPolicyUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/PRIVACY.md",
+      "description": "AgentHaloはMacのデスクトップで、ローカルのAIコーディングツールの作業を見守る小さな相棒です。タスクが思考中、作業中、または入力待ちになると、相棒がその状態を表示します。作業が終わると、さりげなく知らせてくれます。\n\n・タスク一覧：進行中の作業と、あなたの応答を待っている作業を確認できます。\n・権限の確認：ツールがコマンドの実行を求めると、相棒の横に確認用の吹き出しが表示され、許可または拒否を選べます。\n・18種類の内蔵キャラクター：Halo、Sprout、Persimmon、Ink、Crescentなど17種類のオリジナルキャラクターと孫悟空を収録。それぞれにアニメーションと効果音があり、自分のキャラクターパックも読み込めます。\n\nプライバシー：タスクの状態はMac内でのみ処理されます。タスクと吹き出しの表示のため、AgentHaloはタスク名、ツール名、作業フォルダ、タスク完了時の最終応答の短い抜粋を受け取ります。これらの情報はMacの外に保存されず、Appleや開発者に送信されることもありません。アカウント登録は不要で、アクセス解析も行いません。ローカルの状態サーバーは127.0.0.1のみで待ち受けます。\n\nツールを接続するには、「設定」でそのツールの設定フォルダ（例：~/.claude）を選択します。AgentHaloは許可されたフォルダにのみhookの項目と小さなagenthaloフォルダを作成します。「設定」で接続を解除すると、両方とも削除されます。",
+      "keywords": "デスクトップ,ペット,AI,開発,作業,通知,ターミナル,相棒",
+      "supportUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/SUPPORT.md",
+      "promotionalText": "AIコーディング作業を、デスクトップの小さな相棒と。タスクの進捗や権限リクエストを確認でき、18種類のキャラクターを選べます。アカウント不要、タスク情報はMac内で処理します。",
+      "whatsNew": "App Storeの紹介文とスクリーンショットを多言語に対応しました。アプリの機能に変更はありません。",
+      "screenshots": [
+        "screenshots/ja/01-desktop.png",
+        "screenshots/ja/02-choose-folder.png",
+        "screenshots/ja/03-authorized.png",
+        "screenshots/ja/04-characters.png",
+        "screenshots/ja/05-about.png"
+      ]
+    },
+    "ko": {
+      "name": "AgentHalo",
+      "subtitle": "AI 작업을 함께하는 데스크톱 친구",
+      "privacyPolicyUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/PRIVACY.md",
+      "description": "AgentHalo는 Mac 데스크톱에서 로컬 AI 코딩 도구의 작업을 지켜보는 작은 친구입니다. 작업이 생각 중이거나 진행 중일 때, 또는 사용자의 응답을 기다릴 때 해당 상태를 보여줍니다. 작업이 끝나면 가볍게 알려줍니다.\n\n・작업 목록: 진행 중인 작업과 응답을 기다리는 작업을 확인하세요.\n・권한 확인 말풍선: 도구가 명령 실행을 요청하면 데스크톱 친구 옆에 요청 내용이 표시됩니다. 사용자가 직접 허용하거나 거부할 수 있습니다.\n・18가지 기본 캐릭터: Halo, Sprout, Persimmon, Ink, Crescent 등을 포함한 오리지널 캐릭터 17종과 손오공이 제공됩니다. 캐릭터마다 애니메이션과 효과음이 있으며, 사용자 캐릭터 팩도 가져올 수 있습니다.\n\n개인정보: 작업 상태는 Mac 안에서만 처리됩니다. 작업과 말풍선을 표시하기 위해 AgentHalo는 작업 제목, 도구 이름, 작업 폴더, 작업 완료 시 최종 응답의 짧은 일부를 받습니다. 이 정보는 Mac 외부에 저장되거나 Apple 또는 개발자에게 업로드되지 않습니다. 계정과 분석 추적 기능이 없으며, 로컬 상태 서버는 127.0.0.1에서만 연결을 받습니다.\n\n도구를 연결하려면 설정에서 해당 도구의 설정 폴더(예: ~/.claude)를 선택하세요. AgentHalo는 사용자가 허용한 폴더 안에만 hook 항목과 작은 agenthalo 폴더를 만듭니다. 설정에서 연결을 해제하면 두 항목 모두 제거됩니다.",
+      "keywords": "데스크톱,펫,AI,코딩,생산성,개발,터미널,작업,알림",
+      "supportUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/SUPPORT.md",
+      "promotionalText": "AI 코딩 작업을 데스크톱 친구와 함께하세요. 작업 진행 상황과 권한 요청을 확인하고, 18가지 기본 캐릭터를 선택할 수 있습니다. 계정 없이 작업 정보를 Mac 안에서 처리합니다.",
+      "whatsNew": "App Store 소개 문구와 스크린샷을 여러 언어로 보완했습니다. 앱 기능은 변경되지 않았습니다.",
+      "screenshots": [
+        "screenshots/ko/01-desktop.png",
+        "screenshots/ko/02-choose-folder.png",
+        "screenshots/ko/03-authorized.png",
+        "screenshots/ko/04-characters.png",
+        "screenshots/ko/05-about.png"
+      ]
+    },
+    "es-ES": {
+      "name": "AgentHalo",
+      "subtitle": "Tu compañero para tareas de IA",
+      "privacyPolicyUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/PRIVACY.md",
+      "description": "AgentHalo te acompaña en el escritorio del Mac y sigue tus herramientas locales de programación con IA. Cuando una tarea está pensando, trabajando o esperando tu respuesta, el compañero muestra su estado. Al terminar, te avisa discretamente.\n\n・Lista de tareas: comprueba qué tareas siguen en marcha y cuáles esperan tu respuesta.\n・Confirmación de permisos: cuando una herramienta solicita ejecutar un comando, aparece un aviso junto al compañero con la acción solicitada. Tú eliges si permites o rechazas la solicitud.\n・18 personajes incluidos: 17 compañeros originales, como Halo, Sprout, Persimmon, Ink y Crescent, además de Sun Wukong. Cada uno tiene sus propias animaciones y sonidos. También puedes importar tus paquetes de personajes.\n\nPrivacidad: el estado de las tareas se procesa únicamente en tu Mac. Para mostrar las tareas y los avisos, AgentHalo recibe títulos de tareas, nombres de herramientas, carpetas de trabajo y un breve extracto de la respuesta final cuando termina una tarea. Nada se almacena fuera de tu Mac ni se envía a Apple o a nosotros. No hay cuentas ni seguimiento analítico. El servidor local de estado solo escucha en 127.0.0.1.\n\nPara conectar una herramienta, selecciona su carpeta de configuración en Ajustes, por ejemplo ~/.claude. AgentHalo solo añade sus entradas de hook y una pequeña carpeta agenthalo dentro de las carpetas que autorices. Al desconectar la herramienta en Ajustes, se eliminan ambas partes.",
+      "keywords": "escritorio,mascota,IA,código,compañero,productividad,terminal,tareas,avisos",
+      "supportUrl": "https://github.com/addsumtech/AgentHalo-mas/blob/main/docs/SUPPORT.md",
+      "promotionalText": "Un compañero para tus tareas de programación con IA. Sigue el progreso, responde a solicitudes de permiso y elige entre 18 personajes. Todo en tu Mac, sin cuenta.",
+      "whatsNew": "Hemos añadido textos y capturas de App Store en varios idiomas. Las funciones de la app no han cambiado.",
+      "screenshots": [
+        "screenshots/es-ES/01-desktop.png",
+        "screenshots/es-ES/02-choose-folder.png",
+        "screenshots/es-ES/03-authorized.png",
+        "screenshots/es-ES/04-characters.png",
+        "screenshots/es-ES/05-about.png"
+      ]
+    }
+  }
+}
